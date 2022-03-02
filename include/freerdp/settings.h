@@ -661,8 +661,22 @@ typedef struct
 #define FreeRDP_PromptForCredentials (1283)
 #define FreeRDP_SmartcardCertificate (1285)
 #define FreeRDP_SmartcardPrivateKey (1286)
+#define FreeRDP_SmartcardPin (1287)
+#define FreeRDP_SmartcardEmulation (1288)
+#define FreeRDP_Pkcs11Module (1289)
+#define FreeRDP_PkinitAnchors (1290)
+#define FreeRDP_KeySpec (1291)
+#define FreeRDP_CardName (1292)
+#define FreeRDP_ReaderName (1293)
+#define FreeRDP_ContainerName (1294)
+#define FreeRDP_CspName (1295)
 #define FreeRDP_KerberosKdc (1344)
 #define FreeRDP_KerberosRealm (1345)
+#define FreeRDP_KerberosStartTime (1346)
+#define FreeRDP_KerberosLifeTime (1347)
+#define FreeRDP_KerberosRenewableLifeTime (1348)
+#define FreeRDP_KerberosCache (1349)
+#define FreeRDP_KerberosArmor (1350)
 #define FreeRDP_IgnoreCertificate (1408)
 #define FreeRDP_CertificateName (1409)
 #define FreeRDP_CertificateFile (1410)
@@ -708,6 +722,7 @@ typedef struct
 #define FreeRDP_CredentialsFromStdin (1604)
 #define FreeRDP_UnmapButtons (1605)
 #define FreeRDP_OldLicenseBehaviour (1606)
+#define FreeRDP_MouseUseRelativeMove (1607)
 #define FreeRDP_ComputerName (1664)
 #define FreeRDP_ConnectionFile (1728)
 #define FreeRDP_AssistanceFile (1729)
@@ -1140,17 +1155,31 @@ struct rdp_settings
 	ALIGN64 UINT32 Password51Length;   /* 1281 */
 	ALIGN64 BOOL SmartcardLogon;       /* 1282 */
 	ALIGN64 BOOL PromptForCredentials; /* 1283 */
+	UINT64 padding1284[1285 - 1284];   /* 1284 */
 
 	/* Settings used for smartcard emulation */
-	UINT64 padding1284[1285 - 1284];    /* 1284 */
 	ALIGN64 char* SmartcardCertificate; /* 1285 */
 	ALIGN64 char* SmartcardPrivateKey;  /* 1286 */
-	UINT64 padding1344[1344 - 1287];    /* 1287 */
+	ALIGN64 char* SmartcardPin;         /* 1287 */
+	ALIGN64 BOOL SmartcardEmulation;    /* 1288 */
+	ALIGN64 char* Pkcs11Module;         /* 1289 */
+	ALIGN64 char* PkinitAnchors;        /* 1290 */
+	ALIGN64 UINT32 KeySpec;             /* 1291 */
+	ALIGN64 char* CardName;             /* 1292 */
+	ALIGN64 char* ReaderName;           /* 1293 */
+	ALIGN64 char* ContainerName;        /* 1294 */
+	ALIGN64 char* CspName;              /* 1295 */
+	UINT64 padding1344[1344 - 1296];    /* 1296 */
 
 	/* Kerberos Authentication */
-	ALIGN64 char* KerberosKdc;       /* 1344 */
-	ALIGN64 char* KerberosRealm;     /* 1345 */
-	UINT64 padding1408[1408 - 1346]; /* 1346 */
+	ALIGN64 char* KerberosKdc;               /* 1344 */
+	ALIGN64 char* KerberosRealm;             /* 1345 */
+	ALIGN64 char* KerberosStartTime;         /* 1346 */
+	ALIGN64 char* KerberosLifeTime;          /* 1347 */
+	ALIGN64 char* KerberosRenewableLifeTime; /* 1348 */
+	ALIGN64 char* KerberosCache;             /* 1349 */
+	ALIGN64 char* KerberosArmor;             /* 1350 */
+	UINT64 padding1408[1408 - 1351];         /* 1351 */
 
 	/* Server Certificate */
 	ALIGN64 BOOL IgnoreCertificate;                /* 1408 */
@@ -1210,7 +1239,8 @@ struct rdp_settings
 	ALIGN64 BOOL CredentialsFromStdin; /* 1604 */
 	ALIGN64 BOOL UnmapButtons;         /* 1605 */
 	ALIGN64 BOOL OldLicenseBehaviour;  /* 1606 */
-	UINT64 padding1664[1664 - 1607];   /* 1607 */
+	ALIGN64 BOOL MouseUseRelativeMove; /* 1607 */
+	UINT64 padding1664[1664 - 1608];   /* 1608 */
 
 	/* Names */
 	ALIGN64 char* ComputerName;      /* 1664 */

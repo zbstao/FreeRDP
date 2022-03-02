@@ -54,7 +54,7 @@ static BOOL WLog_ConsoleAppender_WriteMessage(wLog* log, wLogAppender* appender,
                                               wLogMessage* message)
 {
 	FILE* fp;
-	char prefix[WLOG_MAX_PREFIX_SIZE];
+	char prefix[WLOG_MAX_PREFIX_SIZE] = { 0 };
 	wLogConsoleAppender* consoleAppender;
 	if (!appender)
 		return FALSE;
@@ -67,12 +67,9 @@ static BOOL WLog_ConsoleAppender_WriteMessage(wLog* log, wLogAppender* appender,
 #ifdef _WIN32
 	if (consoleAppender->outputStream == WLOG_CONSOLE_DEBUG)
 	{
-		char MessageString[4096];
-
-		sprintf_s(MessageString, sizeof(MessageString), "%s%s\n", message->PrefixString,
-		          message->TextString);
-
-		OutputDebugStringA(MessageString);
+		OutputDebugStringA(message->PrefixString);
+		OutputDebugStringA(message->TextString);
+		OutputDebugStringA("\n");
 
 		return TRUE;
 	}

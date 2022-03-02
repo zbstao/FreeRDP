@@ -102,7 +102,7 @@ static SECURITY_STATUS NCryptP11StorageProvider_dtor(NCRYPT_HANDLE handle)
 
 static void fix_padded_string(char *str, size_t maxlen)
 {
-	char *ptr = str + maxlen-1;
+	char* ptr = str + maxlen - 1;
 
 	while (ptr > str && *ptr == ' ')
 		ptr--;
@@ -315,8 +315,9 @@ static SECURITY_STATUS collect_private_keys(NCryptP11ProviderHandle* provider,
 	return ERROR_SUCCESS;
 }
 
-static LPWSTR convertKeyType(CK_KEY_TYPE k)
+static BOOL convertKeyType(CK_KEY_TYPE k, LPWSTR dest, DWORD len, DWORD* outlen)
 {
+	DWORD retLen;
 	const WCHAR* r = NULL;
 
 #define ALGO_CASE(V, S) \
@@ -349,11 +350,37 @@ static LPWSTR convertKeyType(CK_KEY_TYPE k)
 		case CKK_AES:
 		case CKK_BLOWFISH:
 		case CKK_TWOFISH:
+		default:
 			break;
 	}
 #undef ALGO_CASE
 
-	return _wcsdup(r);
+	retLen = _wcslen(r);
+	if (outlen)
+		*outlen = retLen;
+
+	if (!r)
+	{
+		if (dest && len > 0)
+			dest[0] = 0;
+		return FALSE;
+	}
+	else
+	{
+		if (retLen + 1 < len)
+		{
+			WLog_ERR(TAG, "target buffer is too small for algo name");
+			return FALSE;
+		}
+
+		if (dest)
+		{
+			memcpy(dest, r, retLen * 2);
+			dest[retLen] = 0;
+		}
+	}
+
+	return TRUE;
 }
 
 static void wprintKeyName(LPWSTR str, CK_SLOT_ID slotId, CK_BYTE* id, CK_ULONG idLen)
@@ -429,7 +456,7 @@ static SECURITY_STATUS parseKeyName(LPCWSTR pszKeyName, CK_SLOT_ID* slotId, CK_B
 	char* pos;
 
 	if (WideCharToMultiByte(CP_UTF8, 0, pszKeyName, _wcslen(pszKeyName) + 1, asciiKeyName,
-	                        sizeof(asciiKeyName)-1, "?", FALSE) <= 0)
+	                        sizeof(asciiKeyName) - 1, "?", FALSE) <= 0)
 		return NTE_BAD_KEY;
 
 	if (*asciiKeyName != '\\')
@@ -481,7 +508,7 @@ static SECURITY_STATUS NCryptP11EnumKeys(NCRYPT_PROV_HANDLE hProvider, LPCWSTR p
 		int asciiScopeLen;
 
 		if (WideCharToMultiByte(CP_UTF8, 0, pszScope, _wcslen(pszScope) + 1, asciiScope,
-		                        sizeof(asciiScope)-1, "?", NULL) <= 0)
+		                        sizeof(asciiScope) - 1, "?", NULL) <= 0)
 			return NTE_INVALID_PARAMETER;
 
 		if (strstr(asciiScope, "\\\\.\\") != asciiScope)
@@ -591,8 +618,13 @@ static SECURITY_STATUS NCryptP11EnumKeys(NCRYPT_PROV_HANDLE hProvider, LPCWSTR p
 
 		if (ncertObjects)
 		{
-			/* sizeof keyName struct + "\<slotId>\<certId>" */
-			const size_t KEYNAME_SZ = (1 + 8 /*slotId*/ + 1 + (privKey->idLen * 2) + 1) * 2;
+			/* sizeof keyName struct + "\<slotId>\<certId>" + keyName->pszAlgid */
+			DWORD algoSz;
+			size_t KEYNAME_SZ = (1 + 8 /*slotId*/ + 1 + (privKey->idLen * 2) + 1) * 2;
+
+			convertKeyType(privKey->keyType, NULL, 0, &algoSz);
+			KEYNAME_SZ += (algoSz + 1) * 2;
+
 			keyName = calloc(1, sizeof(*keyName) + KEYNAME_SZ);
 			if (!keyName)
 			{
@@ -601,9 +633,11 @@ static SECURITY_STATUS NCryptP11EnumKeys(NCRYPT_PROV_HANDLE hProvider, LPCWSTR p
 			}
 			keyName->dwLegacyKeySpec = AT_KEYEXCHANGE | AT_SIGNATURE;
 			keyName->dwFlags = NCRYPT_MACHINE_KEY_FLAG;
-			keyName->pszAlgid = convertKeyType(privKey->keyType);
 			keyName->pszName = (LPWSTR)(keyName + 1);
 			wprintKeyName(keyName->pszName, privKey->slotId, privKey->id, privKey->idLen);
+
+			keyName->pszAlgid = keyName->pszName + _wcslen(keyName->pszName) + 1;
+			convertKeyType(privKey->keyType, keyName->pszAlgid, algoSz+1, NULL);
 		}
 
 	cleanup_FindObjects:
@@ -645,10 +679,12 @@ static SECURITY_STATUS NCryptP11KeyGetProperties(NCryptP11KeyHandle* keyHandle,
 	WINPR_ASSERT(provider);
 
 	switch (property)
+
 	{
 		case NCRYPT_PROPERTY_CERTIFICATE:
 			break;
-		case NCRYPT_PROPERTY_READER: {
+		case NCRYPT_PROPERTY_READER:
+		{
 			CK_SLOT_INFO slotInfo;
 
 			WINPR_ASSERT(provider->p11->C_GetSlotInfo);
@@ -656,16 +692,31 @@ static SECURITY_STATUS NCryptP11KeyGetProperties(NCryptP11KeyHandle* keyHandle,
 			if (rv != CKR_OK)
 				return NTE_BAD_KEY;
 
-			#define SLOT_DESC_SZ sizeof(slotInfo.slotDescription)
+#define SLOT_DESC_SZ sizeof(slotInfo.slotDescription)
 			fix_padded_string((char*)slotInfo.slotDescription, SLOT_DESC_SZ);
 			*pcbResult = 2 * (strnlen((char*)slotInfo.slotDescription, SLOT_DESC_SZ) + 1);
 			if (pbOutput)
 			{
-				if(cbOutput < *pcbResult)
+				if (cbOutput < *pcbResult)
 					return NTE_NO_MEMORY;
 
-				if (MultiByteToWideChar(CP_UTF8, 0, (LPCSTR)slotInfo.slotDescription, -1, (LPWSTR)pbOutput, cbOutput) <= 0)
+				if (MultiByteToWideChar(CP_UTF8, 0, (LPCSTR)slotInfo.slotDescription, -1,
+				                        (LPWSTR)pbOutput, cbOutput) <= 0)
 					return NTE_NO_MEMORY;
+			}
+			return ERROR_SUCCESS;
+		}
+		case NCRYPT_PROPERTY_SLOTID:
+		{
+			*pcbResult = 4;
+			if (pbOutput)
+			{
+				UINT32* ptr = (UINT32*)pbOutput;
+
+				if (cbOutput < 4)
+					return NTE_NO_MEMORY;
+
+				*ptr = keyHandle->slotId;
 			}
 			return ERROR_SUCCESS;
 		}

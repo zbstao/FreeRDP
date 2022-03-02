@@ -141,8 +141,7 @@ typedef struct touch_contact
 
 struct xf_context
 {
-	rdpContext context;
-	DEFINE_RDP_CLIENT_COMMON();
+	rdpClientContext common;
 
 	GC gc;
 	int xfds;
@@ -204,7 +203,6 @@ struct xf_context
 #endif
 
 	BOOL focused;
-	BOOL use_xinput;
 	BOOL mouse_active;
 	BOOL fullscreen_toggle;
 	BOOL controlToggle;
@@ -272,7 +270,6 @@ struct xf_context
 	xfClipboard* clipboard;
 	CliprdrClientContext* cliprdr;
 	xfVideoContext* xfVideo;
-	RdpeiClientContext* rdpei;
 	EncomspClientContext* encomsp;
 	xfDispContext* xfDisp;
 
@@ -301,6 +298,8 @@ struct xf_context
 	double px_vector;
 	double py_vector;
 #endif
+	BOOL xi_rawevent;
+	BOOL xi_event;
 };
 
 BOOL xf_create_window(xfContext* xfc);

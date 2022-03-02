@@ -43,7 +43,7 @@ typedef struct
 
 typedef struct
 {
-	rdpContext context;
+	rdpClientContext common;
 
 	UwacDisplay* display;
 	HANDLE displayHandle;
@@ -55,8 +55,6 @@ typedef struct
 	BOOL focusing;
 
 	/* Channels */
-	RdpeiClientContext* rdpei;
-	RdpgfxClientContext* gfx;
 	EncomspClientContext* encomsp;
 	wfClipboard* clipboard;
 	wlfDispContext* disp;

@@ -27,9 +27,11 @@ endif()
 
 set(${MODULE_PREFIX}_SRCS
 	client.c
+	client_rails.c
 	cmdline.c
 	file.c
-	geometry.c)
+	geometry.c
+	smartcard_cli.c)
 
 foreach(FREERDP_CHANNELS_CLIENT_SRC ${FREERDP_CHANNELS_CLIENT_SRCS})
 	get_filename_component(NINC ${FREERDP_CHANNELS_CLIENT_SRC} PATH)

@@ -30,11 +30,9 @@
 
 typedef struct
 {
-	rdpContext context;
+	rdpClientContext common;
 
 	/* Channels */
-	RdpeiClientContext* rdpei;
-	RdpgfxClientContext* gfx;
 	EncomspClientContext* encomsp;
 } tfContext;
 

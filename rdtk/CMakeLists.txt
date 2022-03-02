@@ -27,6 +27,10 @@ if (NOT FREERDP_UNIFIED_BUILD)
 	cmake_minimum_required(VERSION 3.4)
 	project(RdTk VERSION ${RDTK_VERSION} LANGUAGES C)
 
+	set(CMAKE_C_STANDARD 99)
+	set(CMAKE_C_STANDARD_REQUIRED ON)
+	set(CMAKE_C_EXTENSIONS ON)
+
 	set(CMAKE_COLOR_MAKEFILE ON)
 
 	set(WINPR_VERSION_MAJOR 3)
@@ -68,9 +72,7 @@ include(GNUInstallDirsWrapper)
 include(CMakePackageConfigHelpers)
 include (SetFreeRDPCMakeInstallDir)
 
-if(BUILD_SHARED_LIBS)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -DRDTK_EXPORTS")
-endif()
+add_definitions(-DRDTK_EXPORTS)
 
 if (NOT IOS)
 	check_include_files(stdbool.h WINPR_HAVE_STDBOOL_H)
