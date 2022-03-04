@@ -20,9 +20,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <stdarg.h>
 #include <unistd.h>
@@ -367,7 +365,7 @@ BOOL xf_GetWindowProperty(xfContext* xfc, Window window, Atom property, int leng
 
 	if (actual_type == None)
 	{
-		WLog_INFO(TAG, "Property %lu does not exist", (unsigned long)property);
+		WLog_DBG(TAG, "Property %lu does not exist", (unsigned long)property);
 		return FALSE;
 	}
 

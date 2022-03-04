@@ -21,9 +21,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <freerdp/freerdp.h>
 #include <freerdp/gdi/gdi.h>
@@ -563,6 +561,7 @@ static BOOL pf_client_send_channel_data(pClientContext* pc, const proxyChannelDa
 
 	return Queue_Enqueue(pc->cached_server_channel_data, ev);
 }
+
 static BOOL sendQueuedChannelData(pClientContext* pc)
 {
 	BOOL rc = TRUE;
@@ -585,9 +584,10 @@ static BOOL sendQueuedChannelData(pClientContext* pc)
 				rc = TRUE;
 			else
 			{
-				WINPR_ASSERT(pc->context.instance->SendChannelData);
-				rc = pc->context.instance->SendChannelData(pc->context.instance, channelId,
-				                                           ev->data, ev->data_len);
+				WINPR_ASSERT(pc->context.instance->SendChannelPacket);
+				rc = pc->context.instance->SendChannelPacket(pc->context.instance, channelId,
+				                                             ev->total_size, ev->flags, ev->data,
+				                                             ev->data_len);
 			}
 			channel_data_free(ev);
 		}

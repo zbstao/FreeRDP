@@ -13,9 +13,7 @@
    http://mozilla.org/MPL/2.0/.
 */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <locale.h>
 

@@ -19,9 +19,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <stdarg.h>
 
@@ -32,7 +30,7 @@
 #include "transport.h"
 #include "connection.h"
 #include "message.h"
-#include "buildflags.h"
+#include <freerdp/buildflags.h>
 #include "gateway/rpc_fault.h"
 
 #include <winpr/assert.h>
@@ -590,11 +588,11 @@ const char* freerdp_get_version_string(void)
 const char* freerdp_get_build_config(void)
 {
 	static const char build_config[] =
-	    "Build configuration: " BUILD_CONFIG "\n"
-	    "Build type:          " BUILD_TYPE "\n"
-	    "CFLAGS:              " CFLAGS "\n"
-	    "Compiler:            " COMPILER_ID ", " COMPILER_VERSION "\n"
-	    "Target architecture: " TARGET_ARCH "\n";
+	    "Build configuration: " FREERDP_BUILD_CONFIG "\n"
+	    "Build type:          " FREERDP_BUILD_TYPE "\n"
+	    "CFLAGS:              " FREERDP_CFLAGS "\n"
+	    "Compiler:            " FREERDP_COMPILER_ID ", " FREERDP_COMPILER_VERSION "\n"
+	    "Target architecture: " FREERDP_TARGET_ARCH "\n";
 	return build_config;
 }
 
@@ -901,7 +899,7 @@ void freerdp_set_last_error_ex(rdpContext* context, UINT32 lastError, const char
 
 	if (lastError == FREERDP_ERROR_SUCCESS)
 	{
-		WLog_INFO(TAG, "%s:%s resetting error state", fkt, __FUNCTION__);
+		WLog_DBG(TAG, "%s:%s resetting error state", fkt, __FUNCTION__);
 	}
 	else if (context->LastError != FREERDP_ERROR_SUCCESS)
 	{

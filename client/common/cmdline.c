@@ -19,9 +19,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <ctype.h>
 #include <errno.h>
@@ -3639,7 +3637,7 @@ static BOOL freerdp_client_load_static_channel_addin(rdpChannels* channels, rdpS
 	{
 		if (freerdp_channels_client_load_ex(channels, settings, entryEx, data) == 0)
 		{
-			WLog_INFO(TAG, "loading channelEx %s", name);
+			WLog_DBG(TAG, "loading channelEx %s", name);
 			return TRUE;
 		}
 	}
@@ -3647,7 +3645,7 @@ static BOOL freerdp_client_load_static_channel_addin(rdpChannels* channels, rdpS
 	{
 		if (freerdp_channels_client_load(channels, settings, entry, data) == 0)
 		{
-			WLog_INFO(TAG, "loading channel %s", name);
+			WLog_DBG(TAG, "loading channel %s", name);
 			return TRUE;
 		}
 	}

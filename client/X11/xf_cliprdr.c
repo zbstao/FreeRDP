@@ -19,9 +19,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <stdlib.h>
 #include <errno.h>
@@ -2157,7 +2155,7 @@ xf_cliprdr_server_format_data_response(CliprdrClientContext* context,
 	{
 		if (SrcSize == 0)
 		{
-			WLog_INFO(TAG, "skipping, empty data detected!!!");
+			WLog_DBG(TAG, "skipping, empty data detected!");
 			free(clipboard->respond);
 			clipboard->respond = NULL;
 			return CHANNEL_RC_OK;

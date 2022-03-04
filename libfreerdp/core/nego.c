@@ -20,9 +20,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <winpr/crt.h>
 #include <winpr/assert.h>
@@ -1140,7 +1138,7 @@ BOOL nego_process_negotiation_response(rdpNego* nego, wStream* s)
 	}
 
 	Stream_Read_UINT8(s, nego->flags);
-	WLog_INFO(TAG, "RDP_NEG_RSP::flags = { %s }", nego_rdp_neg_rsp_flags_str(nego->flags));
+	WLog_DBG(TAG, "RDP_NEG_RSP::flags = { %s }", nego_rdp_neg_rsp_flags_str(nego->flags));
 
 	Stream_Read_UINT16(s, length);
 	if (length != 8)

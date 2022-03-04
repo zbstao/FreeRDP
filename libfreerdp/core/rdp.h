@@ -21,9 +21,7 @@
 #ifndef FREERDP_LIB_CORE_RDP_H
 #define FREERDP_LIB_CORE_RDP_H
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include "nla.h"
 #include "mcs.h"

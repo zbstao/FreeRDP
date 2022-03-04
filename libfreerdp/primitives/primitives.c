@@ -16,9 +16,7 @@
  * permissions and limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <string.h>
 #include <stdlib.h>
@@ -260,7 +258,7 @@ static BOOL primitives_autodetect_best(primitives_t* prims)
 	/* finally compute the results */
 	*prims = *best->prims;
 
-	WLog_INFO(TAG, "primitives autodetect, using %s", best->name);
+	WLog_DBG(TAG, "primitives autodetect, using %s", best->name);
 	ret = TRUE;
 out:
 	if (!ret)

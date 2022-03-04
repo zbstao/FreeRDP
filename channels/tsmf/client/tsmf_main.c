@@ -19,9 +19,7 @@
  * limitations under the License.
  */
 
-#ifdef HAVE_CONFIG_H
-#include "config.h"
-#endif
+#include <freerdp/config.h>
 
 #include <winpr/crt.h>
 #include <winpr/stream.h>
@@ -501,7 +499,7 @@ static UINT tsmf_process_addin_args(IWTSPlugin* pPlugin, const ADDIN_ARGV* args)
 {
 	int status;
 	DWORD flags;
-	COMMAND_LINE_ARGUMENT_A* arg;
+	const COMMAND_LINE_ARGUMENT_A* arg;
 	TSMF_PLUGIN* tsmf = (TSMF_PLUGIN*)pPlugin;
 	COMMAND_LINE_ARGUMENT_A tsmf_args[] = { { "sys", COMMAND_LINE_VALUE_REQUIRED, "<subsystem>",
 		                                      NULL, NULL, -1, NULL, "audio subsystem" },
