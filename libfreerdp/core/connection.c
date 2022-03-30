@@ -37,6 +37,8 @@
 #include <freerdp/listener.h>
 #include <freerdp/cache/pointer.h>
 
+#include "utils.h"
+
 #define TAG FREERDP_TAG("core.connection")
 
 /**
@@ -359,15 +361,16 @@ BOOL rdp_client_connect(rdpRdp* rdp)
 		if ((SelectedProtocol & PROTOCOL_SSL) || (SelectedProtocol == PROTOCOL_RDP))
 		{
 			if ((settings->Username != NULL) &&
-			    ((settings->Password != NULL) || (settings->RedirectionPassword != NULL &&
-			                                      settings->RedirectionPasswordLength > 0)))
+			    ((freerdp_settings_get_string(settings, FreeRDP_Password) != NULL) ||
+			     (settings->RedirectionPassword != NULL &&
+			      settings->RedirectionPasswordLength > 0)))
 				settings->AutoLogonEnabled = TRUE;
 		}
+		transport_set_blocking_mode(rdp->transport, FALSE);
 	}
 
 	/* everything beyond this point is event-driven and non blocking */
 	transport_set_recv_callbacks(rdp->transport, rdp_recv_callback, rdp);
-	transport_set_blocking_mode(rdp->transport, FALSE);
 
 	if (rdp_get_state(rdp) != CONNECTION_STATE_NLA)
 	{
@@ -375,7 +378,8 @@ BOOL rdp_client_connect(rdpRdp* rdp)
 			return FALSE;
 	}
 
-	for (timeout = 0; timeout < settings->TcpAckTimeout; timeout += 100)
+	for (timeout = 0; timeout < freerdp_settings_get_uint32(settings, FreeRDP_TcpAckTimeout);
+	     timeout += 100)
 	{
 		if (rdp_check_fds(rdp) < 0)
 		{
@@ -434,10 +438,12 @@ BOOL rdp_client_disconnect_and_clear(rdpRdp* rdp)
 	context = rdp->context;
 	WINPR_ASSERT(context);
 
+	if (freerdp_get_last_error(context) == FREERDP_ERROR_CONNECT_CANCELLED)
+		return FALSE;
+
 	context->LastError = FREERDP_ERROR_SUCCESS;
 	clearChannelError(context);
-	ResetEvent(context->abortEvent);
-	return TRUE;
+	return utils_reset_abort(context);
 }
 
 static BOOL rdp_client_reconnect_channels(rdpRdp* rdp, BOOL redirect)
@@ -599,7 +605,9 @@ BOOL rdp_client_redirect(rdpRdp* rdp)
 			return FALSE;
 	}
 
-	if (!IFCALLRESULT(TRUE, rdp->instance->Redirect, rdp->instance))
+	WINPR_ASSERT(rdp->context);
+	WINPR_ASSERT(rdp->context->instance);
+	if (!IFCALLRESULT(TRUE, rdp->context->instance->Redirect, rdp->context->instance))
 		return FALSE;
 
 	status = rdp_client_connect(rdp);
@@ -768,10 +776,7 @@ BOOL rdp_server_establish_keys(rdpRdp* rdp, wStream* s)
 	}
 
 	if (!rdp_read_header(rdp, s, &length, &channel_id))
-	{
-		WLog_ERR(TAG, "invalid RDP header");
 		return FALSE;
-	}
 
 	if (!rdp_read_security_header(s, &sec_flags, NULL))
 	{
@@ -1081,7 +1086,8 @@ int rdp_client_connect_demand_active(rdpRdp* rdp, wStream* s)
 		return rc;
 	}
 
-	if (freerdp_shall_disconnect(rdp->instance))
+	WINPR_ASSERT(rdp->context);
+	if (freerdp_shall_disconnect(rdp->context->instance))
 		return 0;
 
 	if (!rdp_send_confirm_active(rdp))
@@ -1427,9 +1433,9 @@ BOOL rdp_server_reactivate(rdpRdp* rdp)
 	return TRUE;
 }
 
-int rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
+BOOL rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
 {
-	int status = 0;
+	BOOL status = FALSE;
 	freerdp_peer* client = NULL;
 	const CONNECTION_STATE cstate = rdp_get_state(rdp);
 
@@ -1443,7 +1449,8 @@ int rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
 	}
 
 	WLog_DBG(TAG, "%s %s --> %s", __FUNCTION__, rdp_get_state_string(rdp), rdp_state_string(state));
-	rdp_set_state(rdp, state);
+	if (!rdp_set_state(rdp, state))
+		goto fail;
 	switch (state)
 	{
 		case CONNECTION_STATE_CAPABILITIES_EXCHANGE:
@@ -1468,7 +1475,7 @@ int rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
 					IFCALLRET(client->PostConnect, client->connected, client);
 
 					if (!client->connected)
-						return -1;
+						goto fail;
 				}
 
 				if (rdp_get_state(rdp) >= CONNECTION_STATE_ACTIVE)
@@ -1476,7 +1483,7 @@ int rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
 					IFCALLRET(client->Activate, client->activated, client);
 
 					if (!client->activated)
-						return -1;
+						goto fail;
 				}
 			}
 
@@ -1486,6 +1493,8 @@ int rdp_server_transition_to_state(rdpRdp* rdp, CONNECTION_STATE state)
 			break;
 	}
 
+	status = TRUE;
+fail:
 	return status;
 }
 

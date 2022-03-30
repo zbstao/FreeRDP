@@ -297,8 +297,13 @@ UINT freerdp_channels_attach(freerdp* instance)
 	size_t hostnameLength;
 	rdpChannels* channels;
 	CHANNEL_CLIENT_DATA* pChannelClientData;
+
+	WINPR_ASSERT(instance);
+	WINPR_ASSERT(instance->context);
+	WINPR_ASSERT(instance->context->settings);
+
 	channels = instance->context->channels;
-	hostname = instance->settings->ServerHostname;
+	hostname = instance->context->settings->ServerHostname;
 	hostnameLength = strlen(hostname);
 
 	for (index = 0; index < channels->clientDataCount; index++)
@@ -341,9 +346,19 @@ UINT freerdp_channels_detach(freerdp* instance)
 	const char* hostname;
 	size_t hostnameLength;
 	rdpChannels* channels;
+	rdpContext* context;
 	CHANNEL_CLIENT_DATA* pChannelClientData;
-	channels = instance->context->channels;
-	hostname = instance->settings->ServerHostname;
+
+	WINPR_ASSERT(instance);
+
+	context = instance->context;
+	WINPR_ASSERT(context);
+
+	channels = context->channels;
+	WINPR_ASSERT(channels);
+
+	WINPR_ASSERT(context->settings);
+	hostname = context->settings->ServerHostname;
 	hostnameLength = strlen(hostname);
 
 	for (index = 0; index < channels->clientDataCount; index++)
@@ -365,14 +380,14 @@ UINT freerdp_channels_detach(freerdp* instance)
 			    CHANNEL_EVENT_DETACHED, (LPVOID)hostname, (UINT)hostnameLength);
 		}
 
-		if (getChannelError(instance->context) != CHANNEL_RC_OK)
+		if (getChannelError(context) != CHANNEL_RC_OK)
 			goto fail;
 
 		pChannelOpenData = &channels->openDataList[index];
 		EventArgsInit(&e, "freerdp");
 		e.name = pChannelOpenData->name;
 		e.pInterface = pChannelOpenData->pInterface;
-		PubSub_OnChannelDetached(instance->context->pubSub, instance->context, &e);
+		PubSub_OnChannelDetached(context->pubSub, context, &e);
 	}
 
 fail:
@@ -391,8 +406,14 @@ UINT freerdp_channels_post_connect(rdpChannels* channels, freerdp* instance)
 	const char* hostname;
 	size_t hostnameLength;
 	CHANNEL_CLIENT_DATA* pChannelClientData;
+
+	WINPR_ASSERT(channels);
+	WINPR_ASSERT(instance);
+	WINPR_ASSERT(instance->context);
+	WINPR_ASSERT(instance->context->settings);
+
 	channels->connected = TRUE;
-	hostname = instance->settings->ServerHostname;
+	hostname = instance->context->settings->ServerHostname;
 	hostnameLength = strlen(hostname);
 
 	for (index = 0; index < channels->clientDataCount; index++)
@@ -778,7 +799,10 @@ void freerdp_channels_close(rdpChannels* channels, freerdp* instance)
 
 	channels->openDataCount = 0;
 	channels->initDataCount = 0;
-	instance->settings->ChannelCount = 0;
+
+	WINPR_ASSERT(instance->context);
+	WINPR_ASSERT(instance->context->settings);
+	instance->context->settings->ChannelCount = 0;
 	g_Instance = NULL;
 }
 
@@ -1223,7 +1247,7 @@ int freerdp_channels_client_load(rdpChannels* channels, rdpSettings* settings,
                                  PVIRTUALCHANNELENTRY entry, void* data)
 {
 	int status;
-	CHANNEL_ENTRY_POINTS_FREERDP EntryPoints;
+	CHANNEL_ENTRY_POINTS_FREERDP EntryPoints = { 0 };
 	CHANNEL_CLIENT_DATA* pChannelClientData;
 
 	if (channels->clientDataCount + 1 > CHANNEL_MAX_COUNT)
@@ -1240,7 +1264,7 @@ int freerdp_channels_client_load(rdpChannels* channels, rdpSettings* settings,
 
 	pChannelClientData = &channels->clientDataList[channels->clientDataCount];
 	pChannelClientData->entry = entry;
-	ZeroMemory(&EntryPoints, sizeof(CHANNEL_ENTRY_POINTS_FREERDP));
+
 	EntryPoints.cbSize = sizeof(EntryPoints);
 	EntryPoints.protocolVersion = VIRTUAL_CHANNEL_VERSION_WIN2000;
 	EntryPoints.pVirtualChannelInit = FreeRDP_VirtualChannelInit;

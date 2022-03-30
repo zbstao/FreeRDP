@@ -669,10 +669,7 @@ static void* convert_filedescriptors_to_file_list(wClipboard* clipboard, UINT32 
 			                             NULL, NULL);
 			/* # (1 char) -> %23 (3 chars) , the first char is replaced inplace */
 			alloc += count_special_chars(descriptors[x].cFileName) * 2;
-			if (skip_last_lineending && x == count - 1)
-				alloc += decoration_len - lineending_len;
-			else
-				alloc += decoration_len;
+			alloc += decoration_len;
 		}
 	}
 
@@ -741,10 +738,7 @@ static void* convert_filedescriptors_to_file_list(wClipboard* clipboard, UINT32 
 			previous_at = stop_at + 1;
 		}
 
-		if (skip_last_lineending && x == count - 1)
-			rc = _snprintf(&dst[pos], alloc - pos, "%s", previous_at);
-		else
-			rc = _snprintf(&dst[pos], alloc - pos, "%s%s", previous_at, lineending);
+		rc = _snprintf(&dst[pos], alloc - pos, "%s%s", previous_at, lineending);
 
 		if (rc < 0)
 		{
@@ -757,6 +751,18 @@ static void* convert_filedescriptors_to_file_list(wClipboard* clipboard, UINT32 
 		pos += (size_t)rc;
 	}
 
+	if (skip_last_lineending)
+	{
+		const size_t endlen = strlen(lineending);
+		if (alloc > endlen)
+		{
+			if (memcmp(&dst[alloc - endlen - 1], lineending, endlen) == 0)
+			{
+				memset(&dst[alloc - endlen - 1], 0, endlen);
+				alloc -= endlen;
+			}
+		}
+	}
 	winpr_HexDump(TAG, WLOG_DEBUG, (const BYTE*)dst, alloc);
 	*pSize = (UINT32)alloc;
 	clipboard->fileListSequenceNumber = clipboard->sequenceNumber;
@@ -767,8 +773,8 @@ static void* convert_filedescriptors_to_file_list(wClipboard* clipboard, UINT32 
 static void* convert_filedescriptors_to_uri_list(wClipboard* clipboard, UINT32 formatId,
                                                  const void* data, UINT32* pSize)
 {
-	return convert_filedescriptors_to_file_list(clipboard, formatId, data, pSize, "",
-	                                            "file:", "\r\n", FALSE);
+	return convert_filedescriptors_to_file_list(clipboard, formatId, data, pSize, "", "file:", "\n",
+	                                            FALSE);
 }
 
 /* Prepend header of common gnome format to file list*/

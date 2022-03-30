@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include <winpr/crt.h>
+#include <winpr/sysinfo.h>
 #include <winpr/assert.h>
 #include <winpr/stream.h>
 
@@ -1063,7 +1064,9 @@ static UINT rdpdr_process_connect(rdpdrPlugin* rdpdr)
 		return CHANNEL_RC_NO_MEMORY;
 	}
 
-	settings = (rdpSettings*)rdpdr->channelEntryPoints.pExtendedData;
+	WINPR_ASSERT(rdpdr->rdpcontext);
+	settings = rdpdr->rdpcontext->settings;
+	WINPR_ASSERT(settings);
 
 	if (settings->ClientHostname)
 		strncpy(rdpdr->computerName, settings->ClientHostname, sizeof(rdpdr->computerName) - 1);
@@ -1170,7 +1173,10 @@ static UINT rdpdr_send_client_name_request(rdpdrPlugin* rdpdr)
 	WINPR_ASSERT(rdpdr);
 
 	if (!rdpdr->computerName[0])
-		gethostname(rdpdr->computerName, sizeof(rdpdr->computerName) - 1);
+	{
+		DWORD size = sizeof(rdpdr->computerName) - 1;
+		GetComputerNameA(rdpdr->computerName, &size);
+	}
 
 	computerNameLenW = ConvertToUnicode(CP_UTF8, 0, rdpdr->computerName, -1, &computerNameW, 0) * 2;
 	WINPR_ASSERT(computerNameLenW >= 0);

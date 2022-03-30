@@ -889,10 +889,6 @@ static int freerdp_client_command_line_post_filter(void* context, COMMAND_LINE_A
 		else
 			settings->MultitransportFlags = 0;
 	}
-	CommandLineSwitchCase(arg, "password-is-pin")
-	{
-		settings->PasswordIsSmartcardPin = enable;
-	}
 	CommandLineSwitchEnd(arg)
 
 	        return status
@@ -2581,7 +2577,8 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 			ULONGLONG val;
 			if (!value_to_uint(arg->Value, &val, 1, 600000))
 				return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
-			settings->TcpAckTimeout = (UINT32)val;
+			if (!freerdp_settings_set_uint32(settings, FreeRDP_TcpAckTimeout, (UINT32)val))
+				return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 		}
 		CommandLineSwitchCase(arg, "aero")
 		{
@@ -3030,7 +3027,7 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 		CommandLineSwitchCase(arg, "floatbar")
 		{
 			/* Defaults are enabled, visible, sticky, fullscreen */
-			settings->Floatbar = 0x0017;
+			UINT32 Floatbar = 0x0017;
 
 			if (arg->Value)
 			{
@@ -3051,12 +3048,12 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 					if (_strnicmp(cur, "sticky:", 7) == 0)
 					{
 						const char* val = cur + 7;
-						settings->Floatbar &= ~0x02u;
+						Floatbar &= ~0x02u;
 
 						if (_strnicmp(val, "on", 3) == 0)
-							settings->Floatbar |= 0x02u;
+							Floatbar |= 0x02u;
 						else if (_strnicmp(val, "off", 4) == 0)
-							settings->Floatbar &= ~0x02u;
+							Floatbar &= ~0x02u;
 						else
 							return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 					}
@@ -3064,12 +3061,12 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 					else if (_strnicmp(cur, "default:", 8) == 0)
 					{
 						const char* val = cur + 8;
-						settings->Floatbar &= ~0x04u;
+						Floatbar &= ~0x04u;
 
 						if (_strnicmp(val, "visible", 8) == 0)
-							settings->Floatbar |= 0x04u;
+							Floatbar |= 0x04u;
 						else if (_strnicmp(val, "hidden", 7) == 0)
-							settings->Floatbar &= ~0x04u;
+							Floatbar &= ~0x04u;
 						else
 							return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 					}
@@ -3077,20 +3074,22 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 					else if (_strnicmp(cur, "show:", 5) == 0)
 					{
 						const char* val = cur + 5;
-						settings->Floatbar &= ~0x30u;
+						Floatbar &= ~0x30u;
 
 						if (_strnicmp(val, "always", 7) == 0)
-							settings->Floatbar |= 0x30u;
+							Floatbar |= 0x30u;
 						else if (_strnicmp(val, "fullscreen", 11) == 0)
-							settings->Floatbar |= 0x10u;
+							Floatbar |= 0x10u;
 						else if (_strnicmp(val, "window", 7) == 0)
-							settings->Floatbar |= 0x20u;
+							Floatbar |= 0x20u;
 						else
 							return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 					}
 					else
 						return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 				} while (start);
+				if (!freerdp_settings_set_uint32(settings, FreeRDP_Floatbar, Floatbar))
+					return COMMAND_LINE_ERROR_UNEXPECTED_VALUE;
 			}
 		}
 		CommandLineSwitchCase(arg, "mouse-motion")
@@ -3185,10 +3184,6 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 			if (!freerdp_settings_set_bool(settings, FreeRDP_RemoteAssistanceRequestControl,
 			                               enable))
 				return COMMAND_LINE_ERROR;
-		}
-		CommandLineSwitchCase(arg, "async-input")
-		{
-			settings->AsyncInput = enable;
 		}
 		CommandLineSwitchCase(arg, "async-update")
 		{
@@ -3400,7 +3395,7 @@ int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings, 
 					  setSmartcardEmulation },
 					{ "key:", FreeRDP_SmartcardPrivateKey, CMDLINE_SUBOPTION_FILE,
 					  setSmartcardEmulation },
-					{ "pin:", FreeRDP_SmartcardPin, CMDLINE_SUBOPTION_STRING, NULL },
+					{ "pin:", FreeRDP_Password, CMDLINE_SUBOPTION_STRING, NULL },
 					{ "csp:", FreeRDP_CspName, CMDLINE_SUBOPTION_STRING, NULL },
 					{ "reader:", FreeRDP_ReaderName, CMDLINE_SUBOPTION_STRING, NULL },
 					{ "card:", FreeRDP_CardName, CMDLINE_SUBOPTION_STRING, NULL },
@@ -3975,10 +3970,13 @@ BOOL freerdp_client_load_addins(rdpChannels* channels, rdpSettings* settings)
 			return FALSE;
 	}
 
-	if (settings->DynamicChannelCount)
-		settings->SupportDynamicChannels = TRUE;
+	if (freerdp_settings_get_uint32(settings, FreeRDP_DynamicChannelCount) > 0)
+	{
+		if (!freerdp_settings_set_bool(settings, FreeRDP_SupportDynamicChannels, TRUE))
+			return FALSE;
+	}
 
-	if (settings->SupportDynamicChannels)
+	if (freerdp_settings_get_bool(settings, FreeRDP_SupportDynamicChannels))
 	{
 		if (!freerdp_client_load_static_channel_addin(channels, settings, DRDYNVC_SVC_CHANNEL_NAME,
 		                                              settings))

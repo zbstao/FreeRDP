@@ -468,12 +468,14 @@ BOOL rdp_recv_deactivate_all(rdpRdp* rdp, wStream* s)
 
 	rdp_client_transition_to_state(rdp, CONNECTION_STATE_CAPABILITIES_EXCHANGE);
 
-	for (timeout = 0; timeout < rdp->settings->TcpAckTimeout; timeout += 100)
+	for (timeout = 0; timeout < freerdp_settings_get_uint32(rdp->settings, FreeRDP_TcpAckTimeout);
+	     timeout += 100)
 	{
 		if (rdp_check_fds(rdp) < 0)
 			return FALSE;
 
-		if (freerdp_shall_disconnect(rdp->instance))
+		WINPR_ASSERT(rdp->context);
+		if (freerdp_shall_disconnect(rdp->context->instance))
 			return TRUE;
 
 		if (rdp_get_state(rdp) == CONNECTION_STATE_ACTIVE)
@@ -575,7 +577,7 @@ BOOL rdp_server_accept_client_font_list_pdu(rdpRdp* rdp, wStream* s)
 	if (!rdp_send_server_font_map_pdu(rdp))
 		return FALSE;
 
-	if (rdp_server_transition_to_state(rdp, CONNECTION_STATE_ACTIVE) < 0)
+	if (!rdp_server_transition_to_state(rdp, CONNECTION_STATE_ACTIVE))
 		return FALSE;
 
 	return TRUE;
