@@ -71,9 +71,9 @@ static inline char* error_string(char* errbuf, size_t errbuf_size, int errnum)
 
 typedef struct
 {
-	AVCodec* codecDecoder;
+	const AVCodec* codecDecoder;
 	AVCodecContext* codecDecoderContext;
-	AVCodec* codecEncoder;
+	const AVCodec* codecEncoder;
 	AVCodecContext* codecEncoderContext;
 	AVCodecParserContext* codecParser;
 	AVFrame* videoFrame;
@@ -91,9 +91,9 @@ typedef struct
 #endif
 } H264_CONTEXT_LIBAVCODEC;
 
-static void libavcodec_destroy_encoder(H264_CONTEXT* h264)
+static void libavcodec_destroy_encoder(H264_CONTEXT* WINPR_RESTRICT h264)
 {
-	H264_CONTEXT_LIBAVCODEC* sys;
+	H264_CONTEXT_LIBAVCODEC* sys = NULL;
 
 	if (!h264 || !h264->subsystem)
 		return;
@@ -114,10 +114,10 @@ static void libavcodec_destroy_encoder(H264_CONTEXT* h264)
 	sys->codecEncoderContext = NULL;
 }
 
-static BOOL libavcodec_create_encoder(H264_CONTEXT* h264)
+static BOOL libavcodec_create_encoder(H264_CONTEXT* WINPR_RESTRICT h264)
 {
 	BOOL recreate = FALSE;
-	H264_CONTEXT_LIBAVCODEC* sys;
+	H264_CONTEXT_LIBAVCODEC* sys = NULL;
 
 	if (!h264 || !h264->subsystem)
 		return FALSE;
@@ -126,6 +126,8 @@ static BOOL libavcodec_create_encoder(H264_CONTEXT* h264)
 		return FALSE;
 
 	sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
+	if (!sys)
+		return FALSE;
 	recreate = !sys->codecEncoder || !sys->codecEncoderContext;
 
 	if (sys->codecEncoderContext)
@@ -184,36 +186,54 @@ EXCEPTION:
 	return FALSE;
 }
 
-static int libavcodec_decompress(H264_CONTEXT* h264, const BYTE* pSrcData, UINT32 SrcSize)
+static int libavcodec_decompress(H264_CONTEXT* WINPR_RESTRICT h264,
+                                 const BYTE* WINPR_RESTRICT pSrcData, UINT32 SrcSize)
 {
-	int status;
+	union
+	{
+		const BYTE* cpv;
+		BYTE* pv;
+	} cnv;
+	int rc = -1;
+	int status = 0;
 	int gotFrame = 0;
+	AVPacket* packet = NULL;
+
+	WINPR_ASSERT(h264);
+	WINPR_ASSERT(pSrcData || (SrcSize == 0));
+
 	H264_CONTEXT_LIBAVCODEC* sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
 	BYTE** pYUVData = h264->pYUVData;
 	UINT32* iStride = h264->iStride;
 
+	WINPR_ASSERT(sys);
+
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
-	av_init_packet(sys->packet);
+	packet = &sys->bufferpacket;
+	WINPR_ASSERT(packet);
+	av_init_packet(packet);
 #else
-	sys->packet = av_packet_alloc();
+	packet = av_packet_alloc();
 #endif
-	sys->packet->data = (BYTE*)pSrcData;
-	sys->packet->size = (int)MIN(SrcSize, INT32_MAX);
+	if (!packet)
+	{
+		WLog_Print(h264->log, WLOG_ERROR, "Failed to allocate AVPacket");
+		goto fail;
+	}
+
+	cnv.cpv = pSrcData;
+	packet->data = cnv.pv;
+	packet->size = (int)MIN(SrcSize, INT32_MAX);
+
+	WINPR_ASSERT(sys->codecDecoderContext);
 	/* avcodec_decode_video2 is deprecated with libavcodec 57.48.101 */
 #if LIBAVCODEC_VERSION_INT >= AV_VERSION_INT(57, 48, 101)
-
-	status = avcodec_send_packet(sys->codecDecoderContext, sys->packet);
-
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
-	av_packet_unref(sys->packet);
-#else
-	av_packet_free(&sys->packet);
-#endif
+	status = avcodec_send_packet(sys->codecDecoderContext, packet);
 
 	if (status < 0)
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to decode video frame (status=%d)", status);
-		return -1;
+		goto fail;
 	}
 
 	sys->videoFrame->format = AV_PIX_FMT_YUV420P;
@@ -231,19 +251,17 @@ static int libavcodec_decompress(H264_CONTEXT* h264, const BYTE* pSrcData, UINT3
 	gotFrame = (status == 0);
 #else
 #ifdef WITH_VAAPI
-	status = avcodec_decode_video2(sys->codecDecoderContext,
-	                               sys->hwctx ? sys->hwVideoFrame : sys->videoFrame, &gotFrame,
-	                               sys->packet);
-#else
 	status =
-	    avcodec_decode_video2(sys->codecDecoderContext, sys->videoFrame, &gotFrame, sys->packet);
+	    avcodec_decode_video2(sys->codecDecoderContext,
+	                          sys->hwctx ? sys->hwVideoFrame : sys->videoFrame, &gotFrame, packet);
+#else
+	status = avcodec_decode_video2(sys->codecDecoderContext, sys->videoFrame, &gotFrame, packet);
 #endif
 #endif
-
 	if (status < 0)
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to decode video frame (status=%d)", status);
-		return -1;
+		goto fail;
 	}
 
 #ifdef WITH_VAAPI
@@ -268,7 +286,7 @@ static int libavcodec_decompress(H264_CONTEXT* h264, const BYTE* pSrcData, UINT3
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to transfer video frame (status=%d) (%s)", status,
 		           av_err2str(status));
-		return -1;
+		goto fail;
 	}
 
 #endif
@@ -283,41 +301,72 @@ static int libavcodec_decompress(H264_CONTEXT* h264, const BYTE* pSrcData, UINT3
 
 	if (gotFrame)
 	{
+		WINPR_ASSERT(sys->videoFrame);
+
 		pYUVData[0] = sys->videoFrame->data[0];
 		pYUVData[1] = sys->videoFrame->data[1];
 		pYUVData[2] = sys->videoFrame->data[2];
 		iStride[0] = (UINT32)MAX(0, sys->videoFrame->linesize[0]);
 		iStride[1] = (UINT32)MAX(0, sys->videoFrame->linesize[1]);
 		iStride[2] = (UINT32)MAX(0, sys->videoFrame->linesize[2]);
+
+		rc = 1;
 	}
 	else
-		return -2;
+		rc = -2;
 
-	return 1;
+fail:
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
+	av_packet_unref(packet);
+#else
+	av_packet_free(&packet);
+#endif
+
+	return rc;
 }
 
-static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const UINT32* pStride,
-                               BYTE** ppDstData, UINT32* pDstSize)
+static int libavcodec_compress(H264_CONTEXT* WINPR_RESTRICT h264,
+                               const BYTE** WINPR_RESTRICT pSrcYuv,
+                               const UINT32* WINPR_RESTRICT pStride,
+                               BYTE** WINPR_RESTRICT ppDstData, UINT32* WINPR_RESTRICT pDstSize)
 {
-	int status;
+	union
+	{
+		const BYTE* cpv;
+		uint8_t* pv;
+	} cnv;
+	int rc = -1;
+	int status = 0;
 	int gotFrame = 0;
+
+	WINPR_ASSERT(h264);
+
 	H264_CONTEXT_LIBAVCODEC* sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
+	WINPR_ASSERT(sys);
 
 	if (!libavcodec_create_encoder(h264))
 		return -1;
 
-#if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(55, 39, 100)
-	av_packet_unref(sys->packet);
-#else
-	av_free(sys->packet->data);
-#endif
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
+	sys->packet = &sys->bufferpacket;
+	av_packet_unref(sys->packet);
 	av_init_packet(sys->packet);
 #else
+	av_packet_free(&sys->packet);
 	sys->packet = av_packet_alloc();
 #endif
+	if (!sys->packet)
+	{
+		WLog_Print(h264->log, WLOG_ERROR, "Failed to allocate AVPacket");
+		goto fail;
+	}
+
+	WINPR_ASSERT(sys->packet);
 	sys->packet->data = NULL;
 	sys->packet->size = 0;
+
+	WINPR_ASSERT(sys->videoFrame);
+	WINPR_ASSERT(sys->codecEncoderContext);
 	sys->videoFrame->format = sys->codecEncoderContext->pix_fmt;
 	sys->videoFrame->width = sys->codecEncoderContext->width;
 	sys->videoFrame->height = sys->codecEncoderContext->height;
@@ -327,9 +376,15 @@ static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const U
 #if LIBAVUTIL_VERSION_INT >= AV_VERSION_INT(52, 92, 100)
 	sys->videoFrame->chroma_location = AVCHROMA_LOC_LEFT;
 #endif
-	sys->videoFrame->data[0] = (uint8_t*)pSrcYuv[0];
-	sys->videoFrame->data[1] = (uint8_t*)pSrcYuv[1];
-	sys->videoFrame->data[2] = (uint8_t*)pSrcYuv[2];
+	cnv.cpv = pSrcYuv[0];
+	sys->videoFrame->data[0] = cnv.pv;
+
+	cnv.cpv = pSrcYuv[1];
+	sys->videoFrame->data[1] = cnv.pv;
+
+	cnv.cpv = pSrcYuv[2];
+	sys->videoFrame->data[2] = cnv.pv;
+
 	sys->videoFrame->linesize[0] = (int)pStride[0];
 	sys->videoFrame->linesize[1] = (int)pStride[1];
 	sys->videoFrame->linesize[2] = (int)pStride[2];
@@ -342,7 +397,7 @@ static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const U
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to encode video frame (%s [%d])",
 		           av_err2str(status), status);
-		return -1;
+		goto fail;
 	}
 
 	status = avcodec_receive_packet(sys->codecEncoderContext, sys->packet);
@@ -351,7 +406,7 @@ static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const U
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to encode video frame (%s [%d])",
 		           av_err2str(status), status);
-		return -1;
+		goto fail;
 	}
 
 	gotFrame = (status == 0);
@@ -383,9 +438,10 @@ static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const U
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Failed to encode video frame (%s [%d])",
 		           av_err2str(status), status);
-		return -1;
+		goto fail;
 	}
 
+	WINPR_ASSERT(sys->packet);
 	*ppDstData = sys->packet->data;
 	*pDstSize = (UINT32)MAX(0, sys->packet->size);
 
@@ -393,18 +449,31 @@ static int libavcodec_compress(H264_CONTEXT* h264, const BYTE** pSrcYuv, const U
 	{
 		WLog_Print(h264->log, WLOG_ERROR, "Did not get frame! (%s [%d])", av_err2str(status),
 		           status);
-		return -2;
+		rc = -2;
 	}
-
-	return 1;
+	else
+		rc = 1;
+fail:
+	return rc;
 }
 
 static void libavcodec_uninit(H264_CONTEXT* h264)
 {
+	WINPR_ASSERT(h264);
+
 	H264_CONTEXT_LIBAVCODEC* sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
 
 	if (!sys)
 		return;
+
+	if (sys->packet)
+	{
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
+		av_packet_unref(sys->packet);
+#else
+		av_packet_free(&sys->packet);
+#endif
+	}
 
 	if (sys->videoFrame)
 	{
@@ -427,16 +496,12 @@ static void libavcodec_uninit(H264_CONTEXT* h264)
 	}
 
 	if (sys->hwctx)
-	{
 		av_buffer_unref(&sys->hwctx);
-	}
 
 #if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(57, 80, 100)
 
 	if (sys->hw_frames_ctx)
-	{
 		av_buffer_unref(&sys->hw_frames_ctx);
-	}
 
 #endif
 #endif
@@ -463,11 +528,15 @@ static void libavcodec_uninit(H264_CONTEXT* h264)
 static enum AVPixelFormat libavcodec_get_format(struct AVCodecContext* ctx,
                                                 const enum AVPixelFormat* fmts)
 {
-	H264_CONTEXT* h264 = (H264_CONTEXT*)ctx->opaque;
-	H264_CONTEXT_LIBAVCODEC* sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
-	const enum AVPixelFormat* p;
+	WINPR_ASSERT(ctx);
 
-	for (p = fmts; *p != AV_PIX_FMT_NONE; p++)
+	H264_CONTEXT* h264 = (H264_CONTEXT*)ctx->opaque;
+	WINPR_ASSERT(h264);
+
+	H264_CONTEXT_LIBAVCODEC* sys = (H264_CONTEXT_LIBAVCODEC*)h264->pSystemData;
+	WINPR_ASSERT(sys);
+
+	for (const enum AVPixelFormat* p = fmts; *p != AV_PIX_FMT_NONE; p++)
 	{
 		if (*p == sys->hw_pix_fmt)
 		{
@@ -513,17 +582,15 @@ static enum AVPixelFormat libavcodec_get_format(struct AVCodecContext* ctx,
 
 static BOOL libavcodec_init(H264_CONTEXT* h264)
 {
-	H264_CONTEXT_LIBAVCODEC* sys;
+	H264_CONTEXT_LIBAVCODEC* sys = NULL;
+
+	WINPR_ASSERT(h264);
 	sys = (H264_CONTEXT_LIBAVCODEC*)calloc(1, sizeof(H264_CONTEXT_LIBAVCODEC));
 
 	if (!sys)
 	{
 		goto EXCEPTION;
 	}
-
-#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(58, 133, 100)
-	sys->packet = &sys->bufferpacket;
-#endif
 
 	h264->pSystemData = (void*)sys;
 
@@ -549,10 +616,12 @@ static BOOL libavcodec_init(H264_CONTEXT* h264)
 			goto EXCEPTION;
 		}
 
+#if LIBAVCODEC_VERSION_INT < AV_VERSION_INT(59, 18, 100)
 		if (sys->codecDecoder->capabilities & AV_CODEC_CAP_TRUNCATED)
 		{
 			sys->codecDecoderContext->flags |= AV_CODEC_FLAG_TRUNCATED;
 		}
+#endif
 
 #ifdef WITH_VAAPI
 
@@ -570,6 +639,7 @@ static BOOL libavcodec_init(H264_CONTEXT* h264)
 				goto fail_hwdevice_create;
 			}
 		}
+		WLog_Print(h264->log, WLOG_INFO, "Using VAAPI for accelerated H264 decoding");
 
 		sys->codecDecoderContext->get_format = libavcodec_get_format;
 		sys->hw_pix_fmt = AV_PIX_FMT_VAAPI;
@@ -626,5 +696,6 @@ EXCEPTION:
 	return FALSE;
 }
 
-H264_CONTEXT_SUBSYSTEM g_Subsystem_libavcodec = { "libavcodec", libavcodec_init, libavcodec_uninit,
-	                                              libavcodec_decompress, libavcodec_compress };
+const H264_CONTEXT_SUBSYSTEM g_Subsystem_libavcodec = { "libavcodec", libavcodec_init,
+	                                                    libavcodec_uninit, libavcodec_decompress,
+	                                                    libavcodec_compress };

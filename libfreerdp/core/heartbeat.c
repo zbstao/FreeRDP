@@ -23,20 +23,20 @@
 
 #include "heartbeat.h"
 
-int rdp_recv_heartbeat_packet(rdpRdp* rdp, wStream* s)
+state_run_t rdp_recv_heartbeat_packet(rdpRdp* rdp, wStream* s)
 {
-	BYTE reserved;
-	BYTE period;
-	BYTE count1;
-	BYTE count2;
-	BOOL rc;
+	BYTE reserved = 0;
+	BYTE period = 0;
+	BYTE count1 = 0;
+	BYTE count2 = 0;
+	BOOL rc = 0;
 
 	WINPR_ASSERT(rdp);
 	WINPR_ASSERT(rdp->context);
 	WINPR_ASSERT(s);
 
-	if (Stream_GetRemainingLength(s) < 4)
-		return -1;
+	if (!Stream_CheckAndLogRequiredLength(AUTODETECT_TAG, s, 4))
+		return STATE_RUN_FAILED;
 
 	Stream_Read_UINT8(s, reserved); /* reserved (1 byte) */
 	Stream_Read_UINT8(s, period);   /* period (1 byte) */
@@ -52,10 +52,10 @@ int rdp_recv_heartbeat_packet(rdpRdp* rdp, wStream* s)
 	if (!rc)
 	{
 		WLog_ERR(HEARTBEAT_TAG, "heartbeat->ServerHeartbeat callback failed!");
-		return -1;
+		return STATE_RUN_FAILED;
 	}
 
-	return 0;
+	return STATE_RUN_SUCCESS;
 }
 
 BOOL freerdp_heartbeat_send_heartbeat_pdu(freerdp_peer* peer, BYTE period, BYTE count1, BYTE count2)

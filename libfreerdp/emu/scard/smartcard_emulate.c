@@ -19,6 +19,7 @@
  */
 
 #include <freerdp/config.h>
+#include <freerdp/freerdp.h>
 
 #include <winpr/crt.h>
 #include <winpr/wlog.h>
@@ -39,8 +40,19 @@
 
 static CHAR g_ReaderNameA[] = { 'F', 'r', 'e', 'e', 'R', 'D', 'P', ' ',  'E',
 	                            'm', 'u', 'l', 'a', 't', 'o', 'r', '\0', '\0' };
-static WCHAR g_ReaderNameW[] = { 'F', 'r', 'e', 'e', 'R', 'D', 'P', ' ',  'E',
-	                             'm', 'u', 'l', 'a', 't', 'o', 'r', '\0', '\0' };
+static INIT_ONCE g_ReaderNameWGuard = INIT_ONCE_STATIC_INIT;
+static WCHAR g_ReaderNameW[32] = { 0 };
+static size_t g_ReaderNameWLen = 0;
+
+static BOOL CALLBACK g_ReaderNameWInit(PINIT_ONCE InitOnce, PVOID Parameter, PVOID* Context)
+{
+	WINPR_UNUSED(InitOnce);
+	WINPR_UNUSED(Parameter);
+	WINPR_UNUSED(Context);
+	InitializeConstWCharFromUtf8(g_ReaderNameA, g_ReaderNameW, ARRAYSIZE(g_ReaderNameW));
+	g_ReaderNameWLen = _wcsnlen(g_ReaderNameW, ARRAYSIZE(g_ReaderNameW) - 2) + 2;
+	return TRUE;
+}
 
 struct smartcard_emulation_context
 {
@@ -97,10 +109,8 @@ typedef struct
 static SCardHandle* find_reader(SmartcardEmulationContext* smartcard, const void* szReader,
                                 BOOL unicode);
 
-
-const BYTE ATR[] = { 0x3b, 0xf7, 0x18, 0x00, 0x00, 0x80, 0x31, 0xfe, 0x45,
-		0x73, 0x66, 0x74, 0x65, 0x2d, 0x6e, 0x66, 0xc4
-};
+static const BYTE ATR[] = { 0x3b, 0xf7, 0x18, 0x00, 0x00, 0x80, 0x31, 0xfe, 0x45,
+	                        0x73, 0x66, 0x74, 0x65, 0x2d, 0x6e, 0x66, 0xc4 };
 
 static BOOL scard_status_transition(SCardContext* context)
 {
@@ -118,6 +128,7 @@ static BOOL scard_status_transition(SCardContext* context)
 			memcpy(reader->rgbAtr, ATR, sizeof(ATR));
 		}
 			{
+				InitOnceExecuteOnce(&g_ReaderNameWGuard, g_ReaderNameWInit, NULL, NULL);
 				SCARD_READERSTATEW* reader = &context->readerStateW[0];
 				reader->szReader = g_ReaderNameW;
 				reader->dwEventState = SCARD_STATE_PRESENT;
@@ -217,8 +228,8 @@ static SCardContext* scard_context_new(void)
 		WINPR_ASSERT(val);
 
 		key->fnObjectEquals = char_compare;
-		key->fnObjectNew = (OBJECT_NEW_FN)_strdup;
-		key->fnObjectFree = free;
+		key->fnObjectNew = winpr_ObjectStringClone;
+		key->fnObjectFree = winpr_ObjectStringFree;
 
 		val->fnObjectFree = free;
 	}
@@ -234,8 +245,8 @@ static SCardContext* scard_context_new(void)
 		WINPR_ASSERT(val);
 
 		key->fnObjectEquals = wchar_compare;
-		key->fnObjectNew = (OBJECT_NEW_FN)_wcsdup;
-		key->fnObjectFree = free;
+		key->fnObjectNew = winpr_ObjectWStringClone;
+		key->fnObjectFree = winpr_ObjectStringFree;
 
 		val->fnObjectFree = free;
 	}
@@ -261,7 +272,7 @@ static void scard_handle_free(void* handle)
 static SCardHandle* scard_handle_new(SmartcardEmulationContext* smartcard, SCARDCONTEXT context,
                                      const void* name, BOOL unicode)
 {
-	SCardHandle* hdl;
+	SCardHandle* hdl = NULL;
 
 	WINPR_ASSERT(smartcard);
 
@@ -285,8 +296,8 @@ static SCardHandle* scard_handle_new(SmartcardEmulationContext* smartcard, SCARD
 	{
 		size_t s = strlen(name);
 
-		hdl->szReader.pw = calloc(s + 2, sizeof(CHAR));
-		if (!hdl->szReader.pw)
+		hdl->szReader.pc = calloc(s + 2, sizeof(CHAR));
+		if (!hdl->szReader.pc)
 			goto fail;
 		memcpy(hdl->szReader.pv, name, s * sizeof(CHAR));
 	}
@@ -321,7 +332,7 @@ fail:
 
 static LONG scard_handle_valid(SmartcardEmulationContext* smartcard, SCARDHANDLE handle)
 {
-	SCardHandle* ctx;
+	SCardHandle* ctx = NULL;
 
 	WINPR_ASSERT(smartcard);
 
@@ -335,8 +346,7 @@ static LONG scard_handle_valid(SmartcardEmulationContext* smartcard, SCARDHANDLE
 static LONG scard_reader_name_valid_a(SmartcardEmulationContext* smartcard, SCARDCONTEXT context,
                                       const char* name)
 {
-	size_t x;
-	SCardContext* ctx;
+	SCardContext* ctx = NULL;
 
 	WINPR_ASSERT(smartcard);
 	ctx = HashTable_GetItemValue(smartcard->contexts, (const void*)context);
@@ -344,7 +354,7 @@ static LONG scard_reader_name_valid_a(SmartcardEmulationContext* smartcard, SCAR
 	WINPR_ASSERT(name);
 	WINPR_ASSERT(ctx);
 
-	for (x = 0; x < MAX_EMULATED_READERS; x++)
+	for (size_t x = 0; x < MAX_EMULATED_READERS; x++)
 	{
 		const SCARD_READERSTATEA* reader = &ctx->readerStateA[x];
 		if (strcmp(reader->szReader, name) == 0)
@@ -357,8 +367,7 @@ static LONG scard_reader_name_valid_a(SmartcardEmulationContext* smartcard, SCAR
 static LONG scard_reader_name_valid_w(SmartcardEmulationContext* smartcard, SCARDCONTEXT context,
                                       const WCHAR* name)
 {
-	size_t x;
-	SCardContext* ctx;
+	SCardContext* ctx = NULL;
 
 	WINPR_ASSERT(smartcard);
 	ctx = HashTable_GetItemValue(smartcard->contexts, (const void*)context);
@@ -366,7 +375,7 @@ static LONG scard_reader_name_valid_w(SmartcardEmulationContext* smartcard, SCAR
 	WINPR_ASSERT(name);
 	WINPR_ASSERT(ctx);
 
-	for (x = 0; x < MAX_EMULATED_READERS; x++)
+	for (size_t x = 0; x < MAX_EMULATED_READERS; x++)
 	{
 		const SCARD_READERSTATEW* reader = &ctx->readerStateW[x];
 		if (_wcscmp(reader->szReader, name) == 0)
@@ -385,7 +394,7 @@ LONG WINAPI Emulate_SCardEstablishContext(SmartcardEmulationContext* smartcard, 
                                           LPSCARDCONTEXT phContext)
 {
 	LONG status = SCARD_E_NO_MEMORY;
-	SCardContext* ctx;
+	SCardContext* ctx = NULL;
 
 	WINPR_ASSERT(smartcard);
 
@@ -402,7 +411,7 @@ LONG WINAPI Emulate_SCardEstablishContext(SmartcardEmulationContext* smartcard, 
 	{
 		SCARDCONTEXT context = { 0 };
 
-		winpr_RAND((BYTE*)&context, sizeof(SCARDCONTEXT));
+		winpr_RAND(&context, sizeof(SCARDCONTEXT));
 		if (HashTable_Insert(smartcard->contexts, (const void*)context, ctx))
 		{
 			*phContext = context;
@@ -416,13 +425,14 @@ LONG WINAPI Emulate_SCardEstablishContext(SmartcardEmulationContext* smartcard, 
 
 	if (status != SCARD_S_SUCCESS)
 		scard_context_free(ctx);
+	// NOLINTNEXTLINE(clang-analyzer-unix.Malloc): HashTable_Insert takes ownership of ctx
 	return status;
 }
 
 LONG WINAPI Emulate_SCardReleaseContext(SmartcardEmulationContext* smartcard, SCARDCONTEXT hContext)
 {
-	LONG status;
-	SCardContext* value;
+	LONG status = 0;
+	SCardContext* value = NULL;
 
 	WINPR_ASSERT(smartcard);
 
@@ -445,7 +455,7 @@ LONG WINAPI Emulate_SCardReleaseContext(SmartcardEmulationContext* smartcard, SC
 
 LONG WINAPI Emulate_SCardIsValidContext(SmartcardEmulationContext* smartcard, SCARDCONTEXT hContext)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -564,6 +574,7 @@ LONG WINAPI Emulate_SCardListReadersW(SmartcardEmulationContext* smartcard, SCAR
 
 	WINPR_UNUSED(mszGroups); /* Not required */
 
+	InitOnceExecuteOnce(&g_ReaderNameWGuard, g_ReaderNameWInit, NULL, NULL);
 	if (SCARD_S_SUCCESS == status)
 	{
 		SCardContext* value = HashTable_GetItemValue(smartcard->contexts, (const void*)hContext);
@@ -575,11 +586,11 @@ LONG WINAPI Emulate_SCardListReadersW(SmartcardEmulationContext* smartcard, SCAR
 
 		/* Return length only */
 		if (!mszReaders)
-			*pcchReaders = ARRAYSIZE(g_ReaderNameW);
+			*pcchReaders = g_ReaderNameWLen;
 		else
 		{
 			*pcchReaders = scard_copy_strings(value, mszReaders, *pcchReaders, g_ReaderNameW,
-			                                  sizeof(g_ReaderNameW)) /
+			                                  g_ReaderNameWLen * sizeof(WCHAR)) /
 			               sizeof(WCHAR);
 		}
 	}
@@ -1214,14 +1225,14 @@ LONG WINAPI Emulate_SCardFreeMemory(SmartcardEmulationContext* smartcard, SCARDC
 
 HANDLE WINAPI Emulate_SCardAccessStartedEvent(SmartcardEmulationContext* smartcard)
 {
-	HANDLE hEvent;
+	HANDLE hEvent = NULL;
 
 	WINPR_ASSERT(smartcard);
 
 	WLog_Print(smartcard->log, smartcard->log_default_level, "SCardAccessStartedEvent {");
 
 	/* Not required, return random */
-	winpr_RAND((BYTE*)&hEvent, sizeof(hEvent));
+	winpr_RAND(&hEvent, sizeof(hEvent));
 
 	WLog_Print(smartcard->log, smartcard->log_default_level, "SCardAccessStartedEvent } hEvent: %p",
 	           hEvent);
@@ -1345,26 +1356,25 @@ LONG WINAPI Emulate_SCardGetStatusChangeA(SmartcardEmulationContext* smartcard,
 	WLog_Print(smartcard->log, smartcard->log_default_level, "SCardGetStatusChangeA { hContext: %p",
 	           (void*)hContext);
 
-	if (dwTimeout == INFINITE)
-		dwTimeout = 60000;
-
 	if (status == SCARD_S_SUCCESS)
 	{
 		const DWORD diff = 100;
-		size_t x;
 		size_t eventCount = 0;
 		SCardContext* value = HashTable_GetItemValue(smartcard->contexts, (const void*)hContext);
 		WINPR_ASSERT(value); /* Must be valid after Emulate_SCardIsValidContext */
 
+		freerdp* inst =
+		    freerdp_settings_get_pointer_writable(smartcard->settings, FreeRDP_instance);
+		WINPR_ASSERT(inst);
+
 		status = SCARD_E_TIMEOUT;
 		do
 		{
-			for (x = 0; x < cReaders; x++)
+			for (size_t x = 0; x < cReaders; x++)
 			{
-				size_t y;
 				LPSCARD_READERSTATEA out = &rgReaderStates[x];
 
-				for (y = 0; y < MAX_EMULATED_READERS; y++)
+				for (size_t y = 0; y < MAX_EMULATED_READERS; y++)
 				{
 					const LPSCARD_READERSTATEA in = &value->readerStateA[y];
 					if (strcmp(out->szReader, in->szReader) == 0)
@@ -1403,7 +1413,13 @@ LONG WINAPI Emulate_SCardGetStatusChangeA(SmartcardEmulationContext* smartcard,
 				break;
 			}
 			Sleep(diff);
-			dwTimeout -= MIN(dwTimeout, diff);
+			if (dwTimeout != INFINITE)
+				dwTimeout -= MIN(dwTimeout, diff);
+			if (freerdp_shall_disconnect_context(inst->context))
+			{
+				status = SCARD_E_CANCELLED;
+				break;
+			}
 		} while (dwTimeout > 0);
 	}
 
@@ -1423,26 +1439,25 @@ LONG WINAPI Emulate_SCardGetStatusChangeW(SmartcardEmulationContext* smartcard,
 	WLog_Print(smartcard->log, smartcard->log_default_level, "SCardGetStatusChangeW { hContext: %p",
 	           (void*)hContext);
 
-	if (dwTimeout == INFINITE)
-		dwTimeout = 60000;
-
 	if (status == SCARD_S_SUCCESS)
 	{
 		const DWORD diff = 100;
-		size_t x;
 		size_t eventCount = 0;
 		SCardContext* value = HashTable_GetItemValue(smartcard->contexts, (const void*)hContext);
 		WINPR_ASSERT(value); /* Must be valid after Emulate_SCardIsValidContext */
 
+		freerdp* inst =
+		    freerdp_settings_get_pointer_writable(smartcard->settings, FreeRDP_instance);
+		WINPR_ASSERT(inst);
+
 		status = SCARD_E_TIMEOUT;
 		do
 		{
-			for (x = 0; x < cReaders; x++)
+			for (size_t x = 0; x < cReaders; x++)
 			{
-				size_t y;
 				LPSCARD_READERSTATEW out = &rgReaderStates[x];
 
-				for (y = 0; y < MAX_EMULATED_READERS; y++)
+				for (size_t y = 0; y < MAX_EMULATED_READERS; y++)
 				{
 					const LPSCARD_READERSTATEW in = &value->readerStateW[y];
 					if (_wcscmp(out->szReader, in->szReader) == 0)
@@ -1480,7 +1495,13 @@ LONG WINAPI Emulate_SCardGetStatusChangeW(SmartcardEmulationContext* smartcard,
 				break;
 			}
 			Sleep(diff);
-			dwTimeout -= MIN(dwTimeout, diff);
+			if (dwTimeout != INFINITE)
+				dwTimeout -= MIN(dwTimeout, diff);
+			if (freerdp_shall_disconnect_context(inst->context))
+			{
+				status = SCARD_E_CANCELLED;
+				break;
+			}
 		} while (dwTimeout > 0);
 	}
 
@@ -1515,11 +1536,11 @@ SCardHandle* find_reader(SmartcardEmulationContext* smartcard, const void* szRea
 {
 	SCardHandle* hdl = NULL;
 	UINT_PTR* keys = NULL;
-	size_t x, count;
+	size_t count = 0;
 
 	WINPR_ASSERT(smartcard);
 	count = HashTable_GetKeys(smartcard->handles, &keys);
-	for (x = 0; x < count; x++)
+	for (size_t x = 0; x < count; x++)
 	{
 		SCardHandle* cur = HashTable_GetItemValue(smartcard->handles, (const void*)keys[x]);
 		WINPR_ASSERT(cur);
@@ -1542,7 +1563,7 @@ static SCardHandle* reader2handle(SmartcardEmulationContext* smartcard, SCARDCON
                                   SCARDHANDLE* phCard, DWORD dwPreferredProtocols,
                                   LPDWORD pdwActiveProtocol)
 {
-	SCardHandle* hdl;
+	SCardHandle* hdl = NULL;
 
 	WINPR_ASSERT(phCard);
 
@@ -1553,7 +1574,7 @@ static SCardHandle* reader2handle(SmartcardEmulationContext* smartcard, SCARDCON
 	hdl = scard_handle_new(smartcard, hContext, szReader, unicode);
 	if (hdl)
 	{
-		winpr_RAND((BYTE*)&hdl->card, sizeof(hdl->card));
+		winpr_RAND(&hdl->card, sizeof(hdl->card));
 		hdl->dwActiveProtocol = SCARD_PROTOCOL_T1;
 		hdl->dwShareMode = dwShareMode;
 
@@ -1792,12 +1813,11 @@ LONG WINAPI Emulate_SCardState(SmartcardEmulationContext* smartcard, SCARDHANDLE
 
 		if (pcbAtrLen)
 		{
-			size_t x;
 			SCardContext* ctx =
 			    HashTable_GetItemValue(smartcard->contexts, (const void*)hdl->hContext);
 			WINPR_ASSERT(ctx);
 
-			for (x = 0; x < MAX_EMULATED_READERS; x++)
+			for (size_t x = 0; x < MAX_EMULATED_READERS; x++)
 			{
 				const SCARD_READERSTATEA* readerA = &ctx->readerStateA[x];
 				const SCARD_READERSTATEW* readerW = &ctx->readerStateW[x];
@@ -1838,7 +1858,7 @@ LONG WINAPI Emulate_SCardStatusA(SmartcardEmulationContext* smartcard, SCARDHAND
 
 	if (status == SCARD_S_SUCCESS)
 	{
-		SCardContext* ctx;
+		SCardContext* ctx = NULL;
 		SCardHandle* hdl = HashTable_GetItemValue(smartcard->handles, (const void*)hCard);
 		WINPR_ASSERT(hdl);
 
@@ -1857,9 +1877,7 @@ LONG WINAPI Emulate_SCardStatusA(SmartcardEmulationContext* smartcard, SCARDHAND
 
 		if (pcbAtrLen)
 		{
-			size_t x;
-
-			for (x = 0; x < MAX_EMULATED_READERS; x++)
+			for (size_t x = 0; x < MAX_EMULATED_READERS; x++)
 			{
 				const SCARD_READERSTATEA* reader = &ctx->readerStateA[x];
 				if (strcmp(reader->szReader, hdl->szReader.pc) == 0)
@@ -1888,7 +1906,7 @@ LONG WINAPI Emulate_SCardStatusW(SmartcardEmulationContext* smartcard, SCARDHAND
 
 	if (status == SCARD_S_SUCCESS)
 	{
-		SCardContext* ctx;
+		SCardContext* ctx = NULL;
 		SCardHandle* hdl = HashTable_GetItemValue(smartcard->handles, (const void*)hCard);
 		WINPR_ASSERT(hdl);
 
@@ -1908,9 +1926,7 @@ LONG WINAPI Emulate_SCardStatusW(SmartcardEmulationContext* smartcard, SCARDHAND
 
 		if (pcbAtrLen)
 		{
-			size_t x;
-
-			for (x = 0; x < MAX_EMULATED_READERS; x++)
+			for (size_t x = 0; x < MAX_EMULATED_READERS; x++)
 			{
 				const SCARD_READERSTATEW* reader = &ctx->readerStateW[x];
 				if (_wcscmp(reader->szReader, hdl->szReader.pw) == 0)
@@ -2073,7 +2089,7 @@ LONG WINAPI Emulate_SCardSetAttrib(SmartcardEmulationContext* smartcard, SCARDHA
 LONG WINAPI Emulate_SCardUIDlgSelectCardA(SmartcardEmulationContext* smartcard,
                                           LPOPENCARDNAMEA_EX pDlgStruc)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -2094,7 +2110,7 @@ LONG WINAPI Emulate_SCardUIDlgSelectCardA(SmartcardEmulationContext* smartcard,
 LONG WINAPI Emulate_SCardUIDlgSelectCardW(SmartcardEmulationContext* smartcard,
                                           LPOPENCARDNAMEW_EX pDlgStruc)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -2115,7 +2131,7 @@ LONG WINAPI Emulate_SCardUIDlgSelectCardW(SmartcardEmulationContext* smartcard,
 LONG WINAPI Emulate_GetOpenCardNameA(SmartcardEmulationContext* smartcard,
                                      LPOPENCARDNAMEA pDlgStruc)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -2136,7 +2152,7 @@ LONG WINAPI Emulate_GetOpenCardNameA(SmartcardEmulationContext* smartcard,
 LONG WINAPI Emulate_GetOpenCardNameW(SmartcardEmulationContext* smartcard,
                                      LPOPENCARDNAMEW pDlgStruc)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -2156,7 +2172,7 @@ LONG WINAPI Emulate_GetOpenCardNameW(SmartcardEmulationContext* smartcard,
 
 LONG WINAPI Emulate_SCardDlgExtendedError(SmartcardEmulationContext* smartcard)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(smartcard);
 
@@ -2193,7 +2209,7 @@ LONG WINAPI Emulate_SCardReadCacheA(SmartcardEmulationContext* smartcard, SCARDC
 
 	if (status == SCARD_S_SUCCESS)
 	{
-		SCardCacheItem* data;
+		SCardCacheItem* data = NULL;
 		SCardContext* value = HashTable_GetItemValue(smartcard->contexts, (const void*)hContext);
 		WINPR_ASSERT(value); /* Must be valid after Emulate_SCardIsValidContext */
 
@@ -2234,7 +2250,7 @@ LONG WINAPI Emulate_SCardReadCacheW(SmartcardEmulationContext* smartcard, SCARDC
 
 	if (status == SCARD_S_SUCCESS)
 	{
-		SCardCacheItem* data;
+		SCardCacheItem* data = NULL;
 		SCardContext* value = HashTable_GetItemValue(smartcard->contexts, (const void*)hContext);
 		WINPR_ASSERT(value); /* Must be valid after Emulate_SCardIsValidContext */
 
@@ -2254,11 +2270,11 @@ LONG WINAPI Emulate_SCardReadCacheW(SmartcardEmulationContext* smartcard, SCARDC
 	return status;
 }
 
-static BOOL insert_data(wHashTable* table, DWORD FreshnessCounter, const void* key,
+static LONG insert_data(wHashTable* table, DWORD FreshnessCounter, const void* key,
                         const PBYTE Data, DWORD DataLen)
 {
-	BOOL rc;
-	SCardCacheItem* item;
+	BOOL rc = 0;
+	SCardCacheItem* item = NULL;
 
 	WINPR_ASSERT(table);
 	WINPR_ASSERT(key);
@@ -2289,6 +2305,8 @@ static BOOL insert_data(wHashTable* table, DWORD FreshnessCounter, const void* k
 	item->freshness = FreshnessCounter;
 	item->size = DataLen;
 	memcpy(item->data, Data, DataLen);
+
+	// NOLINTNEXTLINE(clang-analyzer-unix.Malloc): HashTable_Insert takes ownership of item
 	return SCARD_S_SUCCESS;
 }
 
@@ -2611,7 +2629,7 @@ static BOOL handle_equals(const void* pva, const void* pvb)
 
 SmartcardEmulationContext* Emulate_New(const rdpSettings* settings)
 {
-	SmartcardEmulationContext* smartcard;
+	SmartcardEmulationContext* smartcard = NULL;
 
 	WINPR_ASSERT(settings);
 
@@ -2664,7 +2682,10 @@ SmartcardEmulationContext* Emulate_New(const rdpSettings* settings)
 	return smartcard;
 
 fail:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
 	Emulate_Free(smartcard);
+	WINPR_PRAGMA_DIAG_POP
 	return NULL;
 }
 
@@ -2681,7 +2702,7 @@ void Emulate_Free(SmartcardEmulationContext* context)
 BOOL Emulate_IsConfigured(SmartcardEmulationContext* context)
 {
 	BOOL rc = FALSE;
-	vgidsContext* vgids;
+	vgidsContext* vgids = NULL;
 	const char* pem = NULL;
 	const char* key = NULL;
 	const char* pin = NULL;

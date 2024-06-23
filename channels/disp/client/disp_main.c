@@ -37,39 +37,19 @@
 #include <winpr/collections.h>
 
 #include <freerdp/addin.h>
+#include <freerdp/client/channels.h>
 
 #include "disp_main.h"
 #include "../disp_common.h"
 
 typedef struct
 {
-	IWTSVirtualChannelCallback iface;
+	GENERIC_DYNVC_PLUGIN base;
 
-	IWTSPlugin* plugin;
-	IWTSVirtualChannelManager* channel_mgr;
-	IWTSVirtualChannel* channel;
-} DISP_CHANNEL_CALLBACK;
-
-typedef struct
-{
-	IWTSListenerCallback iface;
-
-	IWTSPlugin* plugin;
-	IWTSVirtualChannelManager* channel_mgr;
-	DISP_CHANNEL_CALLBACK* channel_callback;
-} DISP_LISTENER_CALLBACK;
-
-typedef struct
-{
-	IWTSPlugin iface;
-
-	IWTSListener* listener;
-	DISP_LISTENER_CALLBACK* listener_callback;
-
+	DispClientContext* context;
 	UINT32 MaxNumMonitors;
 	UINT32 MaxMonitorAreaFactorA;
 	UINT32 MaxMonitorAreaFactorB;
-	BOOL initialized;
 } DISP_PLUGIN;
 
 /**
@@ -78,14 +58,13 @@ typedef struct
  * @return 0 on success, otherwise a Win32 error code
  */
 static UINT
-disp_send_display_control_monitor_layout_pdu(DISP_CHANNEL_CALLBACK* callback, UINT32 NumMonitors,
+disp_send_display_control_monitor_layout_pdu(GENERIC_CHANNEL_CALLBACK* callback, UINT32 NumMonitors,
                                              const DISPLAY_CONTROL_MONITOR_LAYOUT* Monitors)
 {
-	UINT status;
-	wStream* s;
-	UINT32 index;
-	DISP_PLUGIN* disp;
-	UINT32 MonitorLayoutSize;
+	UINT status = 0;
+	wStream* s = NULL;
+	DISP_PLUGIN* disp = NULL;
+	UINT32 MonitorLayoutSize = 0;
 	DISPLAY_CONTROL_HEADER header = { 0 };
 
 	WINPR_ASSERT(callback);
@@ -117,9 +96,9 @@ disp_send_display_control_monitor_layout_pdu(DISP_CHANNEL_CALLBACK* callback, UI
 
 	Stream_Write_UINT32(s, MonitorLayoutSize); /* MonitorLayoutSize (4 bytes) */
 	Stream_Write_UINT32(s, NumMonitors);       /* NumMonitors (4 bytes) */
-	WLog_DBG(TAG, "%s: NumMonitors=%" PRIu32 "", __FUNCTION__, NumMonitors);
+	WLog_DBG(TAG, "NumMonitors=%" PRIu32 "", NumMonitors);
 
-	for (index = 0; index < NumMonitors; index++)
+	for (UINT32 index = 0; index < NumMonitors; index++)
 	{
 		DISPLAY_CONTROL_MONITOR_LAYOUT current = Monitors[index];
 		current.Width -= (current.Width % 2);
@@ -150,8 +129,8 @@ disp_send_display_control_monitor_layout_pdu(DISP_CHANNEL_CALLBACK* callback, UI
 		Stream_Write_UINT32(s, current.DesktopScaleFactor); /* DesktopScaleFactor (4 bytes) */
 		Stream_Write_UINT32(s, current.DeviceScaleFactor);  /* DeviceScaleFactor (4 bytes) */
 		WLog_DBG(TAG,
-		         "\t%d : Flags: 0x%08" PRIX32 " Left/Top: (%" PRId32 ",%" PRId32 ") W/H=%" PRIu32
-		         "x%" PRIu32 ")",
+		         "\t%" PRIu32 " : Flags: 0x%08" PRIX32 " Left/Top: (%" PRId32 ",%" PRId32
+		         ") W/H=%" PRIu32 "x%" PRIu32 ")",
 		         index, current.Flags, current.Left, current.Top, current.Width, current.Height);
 		WLog_DBG(TAG,
 		         "\t   PhysicalWidth: %" PRIu32 " PhysicalHeight: %" PRIu32 " Orientation: %" PRIu32
@@ -172,10 +151,10 @@ out:
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT disp_recv_display_control_caps_pdu(DISP_CHANNEL_CALLBACK* callback, wStream* s)
+static UINT disp_recv_display_control_caps_pdu(GENERIC_CHANNEL_CALLBACK* callback, wStream* s)
 {
-	DISP_PLUGIN* disp;
-	DispClientContext* context;
+	DISP_PLUGIN* disp = NULL;
+	DispClientContext* context = NULL;
 	UINT ret = CHANNEL_RC_OK;
 
 	WINPR_ASSERT(callback);
@@ -184,14 +163,11 @@ static UINT disp_recv_display_control_caps_pdu(DISP_CHANNEL_CALLBACK* callback, 
 	disp = (DISP_PLUGIN*)callback->plugin;
 	WINPR_ASSERT(disp);
 
-	context = (DispClientContext*)disp->iface.pInterface;
+	context = disp->context;
 	WINPR_ASSERT(context);
 
-	if (Stream_GetRemainingLength(s) < 12)
-	{
-		WLog_ERR(TAG, "not enough remaining data");
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 12))
 		return ERROR_INVALID_DATA;
-	}
 
 	Stream_Read_UINT32(s, disp->MaxNumMonitors);        /* MaxNumMonitors (4 bytes) */
 	Stream_Read_UINT32(s, disp->MaxMonitorAreaFactorA); /* MaxMonitorAreaFactorA (4 bytes) */
@@ -209,19 +185,16 @@ static UINT disp_recv_display_control_caps_pdu(DISP_CHANNEL_CALLBACK* callback, 
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-static UINT disp_recv_pdu(DISP_CHANNEL_CALLBACK* callback, wStream* s)
+static UINT disp_recv_pdu(GENERIC_CHANNEL_CALLBACK* callback, wStream* s)
 {
-	UINT32 error;
+	UINT32 error = 0;
 	DISPLAY_CONTROL_HEADER header = { 0 };
 
 	WINPR_ASSERT(callback);
 	WINPR_ASSERT(s);
 
-	if (Stream_GetRemainingLength(s) < 8)
-	{
-		WLog_ERR(TAG, "not enough remaining data");
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 8))
 		return ERROR_INVALID_DATA;
-	}
 
 	if ((error = disp_read_header(s, &header)))
 	{
@@ -253,7 +226,7 @@ static UINT disp_recv_pdu(DISP_CHANNEL_CALLBACK* callback, wStream* s)
  */
 static UINT disp_on_data_received(IWTSVirtualChannelCallback* pChannelCallback, wStream* data)
 {
-	DISP_CHANNEL_CALLBACK* callback = (DISP_CHANNEL_CALLBACK*)pChannelCallback;
+	GENERIC_CHANNEL_CALLBACK* callback = (GENERIC_CHANNEL_CALLBACK*)pChannelCallback;
 	return disp_recv_pdu(callback, data);
 }
 
@@ -269,100 +242,6 @@ static UINT disp_on_close(IWTSVirtualChannelCallback* pChannelCallback)
 }
 
 /**
- * Function description
- *
- * @return 0 on success, otherwise a Win32 error code
- */
-static UINT disp_on_new_channel_connection(IWTSListenerCallback* pListenerCallback,
-                                           IWTSVirtualChannel* pChannel, BYTE* Data, BOOL* pbAccept,
-                                           IWTSVirtualChannelCallback** ppCallback)
-{
-	DISP_CHANNEL_CALLBACK* callback;
-	DISP_LISTENER_CALLBACK* listener_callback = (DISP_LISTENER_CALLBACK*)pListenerCallback;
-
-	WINPR_ASSERT(listener_callback);
-	WINPR_ASSERT(pChannel);
-	WINPR_ASSERT(pbAccept);
-	WINPR_ASSERT(ppCallback);
-
-	callback = (DISP_CHANNEL_CALLBACK*)calloc(1, sizeof(DISP_CHANNEL_CALLBACK));
-
-	if (!callback)
-	{
-		WLog_ERR(TAG, "calloc failed!");
-		return CHANNEL_RC_NO_MEMORY;
-	}
-
-	callback->iface.OnDataReceived = disp_on_data_received;
-	callback->iface.OnClose = disp_on_close;
-	callback->plugin = listener_callback->plugin;
-	callback->channel_mgr = listener_callback->channel_mgr;
-	callback->channel = pChannel;
-	listener_callback->channel_callback = callback;
-	*ppCallback = (IWTSVirtualChannelCallback*)callback;
-	return CHANNEL_RC_OK;
-}
-
-/**
- * Function description
- *
- * @return 0 on success, otherwise a Win32 error code
- */
-static UINT disp_plugin_initialize(IWTSPlugin* pPlugin, IWTSVirtualChannelManager* pChannelMgr)
-{
-	UINT status;
-	DISP_PLUGIN* disp = (DISP_PLUGIN*)pPlugin;
-
-	WINPR_ASSERT(disp);
-	WINPR_ASSERT(pChannelMgr);
-
-	if (disp->initialized)
-	{
-		WLog_ERR(TAG, "[%s] channel initialized twice, aborting", DISP_DVC_CHANNEL_NAME);
-		return ERROR_INVALID_DATA;
-	}
-	disp->listener_callback = (DISP_LISTENER_CALLBACK*)calloc(1, sizeof(DISP_LISTENER_CALLBACK));
-
-	if (!disp->listener_callback)
-	{
-		WLog_ERR(TAG, "calloc failed!");
-		return CHANNEL_RC_NO_MEMORY;
-	}
-
-	disp->listener_callback->iface.OnNewChannelConnection = disp_on_new_channel_connection;
-	disp->listener_callback->plugin = pPlugin;
-	disp->listener_callback->channel_mgr = pChannelMgr;
-	status = pChannelMgr->CreateListener(pChannelMgr, DISP_DVC_CHANNEL_NAME, 0,
-	                                     &disp->listener_callback->iface, &(disp->listener));
-	disp->listener->pInterface = disp->iface.pInterface;
-
-	disp->initialized = status == CHANNEL_RC_OK;
-	return status;
-}
-
-/**
- * Function description
- *
- * @return 0 on success, otherwise a Win32 error code
- */
-static UINT disp_plugin_terminated(IWTSPlugin* pPlugin)
-{
-	DISP_PLUGIN* disp = (DISP_PLUGIN*)pPlugin;
-
-	if (disp && disp->listener_callback)
-	{
-		IWTSVirtualChannelManager* mgr = disp->listener_callback->channel_mgr;
-		if (mgr)
-			IFCALL(mgr->DestroyListener, mgr, disp->listener);
-		free(disp->listener_callback);
-	}
-
-	free(disp->iface.pInterface);
-	free(pPlugin);
-	return CHANNEL_RC_OK;
-}
-
-/**
  * Channel Client Interface
  */
 
@@ -374,15 +253,15 @@ static UINT disp_plugin_terminated(IWTSPlugin* pPlugin)
 static UINT disp_send_monitor_layout(DispClientContext* context, UINT32 NumMonitors,
                                      DISPLAY_CONTROL_MONITOR_LAYOUT* Monitors)
 {
-	DISP_PLUGIN* disp;
-	DISP_CHANNEL_CALLBACK* callback;
+	DISP_PLUGIN* disp = NULL;
+	GENERIC_CHANNEL_CALLBACK* callback = NULL;
 
 	WINPR_ASSERT(context);
 
 	disp = (DISP_PLUGIN*)context->handle;
 	WINPR_ASSERT(disp);
 
-	callback = disp->listener_callback->channel_callback;
+	callback = disp->base.listener_callback->channel_callback;
 
 	return disp_send_display_control_monitor_layout_pdu(callback, NumMonitors, Monitors);
 }
@@ -392,52 +271,53 @@ static UINT disp_send_monitor_layout(DispClientContext* context, UINT32 NumMonit
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-UINT disp_DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints)
+static UINT disp_plugin_initialize(GENERIC_DYNVC_PLUGIN* base, rdpContext* rcontext,
+                                   rdpSettings* settings)
 {
-	UINT error = CHANNEL_RC_OK;
-	DISP_PLUGIN* disp;
-	DispClientContext* context;
+	DispClientContext* context = NULL;
+	DISP_PLUGIN* disp = (DISP_PLUGIN*)base;
 
-	WINPR_ASSERT(pEntryPoints);
+	WINPR_ASSERT(disp);
+	disp->MaxNumMonitors = 16;
+	disp->MaxMonitorAreaFactorA = 8192;
+	disp->MaxMonitorAreaFactorB = 8192;
 
-	disp = (DISP_PLUGIN*)pEntryPoints->GetPlugin(pEntryPoints, DISP_CHANNEL_NAME);
-
-	if (!disp)
+	context = (DispClientContext*)calloc(1, sizeof(DispClientContext));
+	if (!context)
 	{
-		disp = (DISP_PLUGIN*)calloc(1, sizeof(DISP_PLUGIN));
-
-		if (!disp)
-		{
-			WLog_ERR(TAG, "calloc failed!");
-			return CHANNEL_RC_NO_MEMORY;
-		}
-
-		disp->iface.Initialize = disp_plugin_initialize;
-		disp->iface.Connected = NULL;
-		disp->iface.Disconnected = NULL;
-		disp->iface.Terminated = disp_plugin_terminated;
-		disp->MaxNumMonitors = 16;
-		disp->MaxMonitorAreaFactorA = 8192;
-		disp->MaxMonitorAreaFactorB = 8192;
-		context = (DispClientContext*)calloc(1, sizeof(DispClientContext));
-
-		if (!context)
-		{
-			WLog_ERR(TAG, "calloc failed!");
-			free(disp);
-			return CHANNEL_RC_NO_MEMORY;
-		}
-
-		context->handle = (void*)disp;
-		context->SendMonitorLayout = disp_send_monitor_layout;
-		disp->iface.pInterface = (void*)context;
-		error = pEntryPoints->RegisterPlugin(pEntryPoints, DISP_CHANNEL_NAME, &disp->iface);
-	}
-	else
-	{
-		WLog_ERR(TAG, "could not get disp Plugin.");
-		return CHANNEL_RC_BAD_CHANNEL;
+		WLog_Print(base->log, WLOG_ERROR, "unable to allocate DispClientContext");
+		return CHANNEL_RC_NO_MEMORY;
 	}
 
-	return error;
+	context->handle = (void*)disp;
+	context->SendMonitorLayout = disp_send_monitor_layout;
+
+	disp->base.iface.pInterface = disp->context = context;
+
+	return CHANNEL_RC_OK;
+}
+
+static void disp_plugin_terminated(GENERIC_DYNVC_PLUGIN* base)
+{
+	DISP_PLUGIN* disp = (DISP_PLUGIN*)base;
+
+	WINPR_ASSERT(disp);
+
+	free(disp->context);
+}
+
+static const IWTSVirtualChannelCallback disp_callbacks = { disp_on_data_received, NULL, /* Open */
+	                                                       disp_on_close, NULL };
+
+/**
+ * Function description
+ *
+ * @return 0 on success, otherwise a Win32 error code
+ */
+FREERDP_ENTRY_POINT(UINT disp_DVCPluginEntry(IDRDYNVC_ENTRY_POINTS* pEntryPoints))
+{
+	return freerdp_generic_DVCPluginEntry(pEntryPoints, TAG, DISP_DVC_CHANNEL_NAME,
+	                                      sizeof(DISP_PLUGIN), sizeof(GENERIC_CHANNEL_CALLBACK),
+	                                      &disp_callbacks, disp_plugin_initialize,
+	                                      disp_plugin_terminated);
 }

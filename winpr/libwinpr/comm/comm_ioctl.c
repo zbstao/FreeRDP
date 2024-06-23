@@ -53,9 +53,7 @@
 
 const char* _comm_serial_ioctl_name(ULONG number)
 {
-	int i;
-
-	for (i = 0; _SERIAL_IOCTL_NAMES[i].number != 0; i++)
+	for (int i = 0; _SERIAL_IOCTL_NAMES[i].number != 0; i++)
 	{
 		if (_SERIAL_IOCTL_NAMES[i].number == number)
 		{
@@ -66,24 +64,15 @@ const char* _comm_serial_ioctl_name(ULONG number)
 	return "(unknown ioctl name)";
 }
 
-static BOOL _CommDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer,
-                                 DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize,
-                                 LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
+static BOOL s_CommDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffer,
+                                  DWORD nInBufferSize, LPVOID lpOutBuffer, DWORD nOutBufferSize,
+                                  LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
 {
 	WINPR_COMM* pComm = (WINPR_COMM*)hDevice;
 	SERIAL_DRIVER* pServerSerialDriver = NULL;
 
-	if (hDevice == INVALID_HANDLE_VALUE)
-	{
-		SetLastError(ERROR_INVALID_HANDLE);
+	if (!CommIsHandleValid(hDevice))
 		return FALSE;
-	}
-
-	if (!pComm || pComm->Type != HANDLE_TYPE_COMM || !pComm->fd)
-	{
-		SetLastError(ERROR_INVALID_HANDLE);
-		return FALSE;
-	}
 
 	if (lpOverlapped)
 	{
@@ -648,7 +637,7 @@ BOOL CommDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffe
                          LPDWORD lpBytesReturned, LPOVERLAPPED lpOverlapped)
 {
 	WINPR_COMM* pComm = (WINPR_COMM*)hDevice;
-	BOOL result;
+	BOOL result = 0;
 
 	if (hDevice == INVALID_HANDLE_VALUE)
 	{
@@ -656,14 +645,17 @@ BOOL CommDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffe
 		return FALSE;
 	}
 
-	if (!pComm || pComm->Type != HANDLE_TYPE_COMM || !pComm->fd)
+	if (!CommIsHandled(hDevice))
+		return FALSE;
+
+	if (!pComm->fd)
 	{
 		SetLastError(ERROR_INVALID_HANDLE);
 		return FALSE;
 	}
 
-	result = _CommDeviceIoControl(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer,
-	                              nOutBufferSize, lpBytesReturned, lpOverlapped);
+	result = s_CommDeviceIoControl(hDevice, dwIoControlCode, lpInBuffer, nInBufferSize, lpOutBuffer,
+	                               nOutBufferSize, lpBytesReturned, lpOverlapped);
 
 	if (lpBytesReturned && *lpBytesReturned != nOutBufferSize)
 	{
@@ -692,8 +684,8 @@ BOOL CommDeviceIoControl(HANDLE hDevice, DWORD dwIoControlCode, LPVOID lpInBuffe
 
 int _comm_ioctl_tcsetattr(int fd, int optional_actions, const struct termios* termios_p)
 {
-	int result;
-	struct termios currentState;
+	int result = 0;
+	struct termios currentState = { 0 };
 
 	if ((result = tcsetattr(fd, optional_actions, termios_p)) < 0)
 	{
@@ -702,7 +694,6 @@ int _comm_ioctl_tcsetattr(int fd, int optional_actions, const struct termios* te
 	}
 
 	/* NB: tcsetattr() can succeed even if not all changes have been applied. */
-	ZeroMemory(&currentState, sizeof(struct termios));
 	if ((result = tcgetattr(fd, &currentState)) < 0)
 	{
 		CommLog_Print(WLOG_WARN, "tcgetattr failure, errno: %d", errno);

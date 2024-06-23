@@ -38,6 +38,7 @@ macro(generate_protocol_file PROTO)
 endmacro()
 
 generate_protocol_file(xdg-shell)
+generate_protocol_file(viewporter)
 generate_protocol_file(xdg-decoration-unstable-v1)
 generate_protocol_file(server-decoration)
 generate_protocol_file(ivi-application)
@@ -78,16 +79,22 @@ if (WITH_LIBRARY_VERSIONING)
 endif()
 
 target_link_libraries(${MODULE_NAME} ${${MODULE_PREFIX}_LIBS} PRIVATE ${WAYLAND_LIBS} ${XKBCOMMON_LIBS} ${EPOLLSHIM_LIBS})
-if (HAVE_PIXMAN_REGION)
+if (UWAC_HAVE_PIXMAN_REGION)
 	target_link_libraries(${MODULE_NAME} PRIVATE ${pixman_LINK_LIBRARIES})
 else()
 	target_link_libraries(${MODULE_NAME} PRIVATE freerdp)
 endif()
 
-install(TARGETS ${MODULE_NAME} COMPONENT libraries EXPORT uwac
-        ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-        RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+target_link_libraries(${MODULE_NAME} PRIVATE m)
+
+if (NOT UWAC_FORCE_STATIC_BUILD)
+	target_include_directories(${MODULE_NAME} INTERFACE $<INSTALL_INTERFACE:include/uwac${UWAC_API_VERSION}>)
+
+	install(TARGETS ${MODULE_NAME} COMPONENT libraries EXPORT uwac
+		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+		LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+		RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
 
 set_property(TARGET ${MODULE_NAME} PROPERTY FOLDER "uwac")
 

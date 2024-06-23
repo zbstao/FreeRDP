@@ -1,5 +1,6 @@
 
 #include <winpr/crt.h>
+#include <winpr/assert.h>
 #include <winpr/sspi.h>
 #include <winpr/print.h>
 #include <winpr/wlog.h>
@@ -99,7 +100,10 @@ typedef struct
 static int test_ntlm_client_init(TEST_NTLM_CLIENT* ntlm, const char* user, const char* domain,
                                  const char* password)
 {
-	SECURITY_STATUS status;
+	SECURITY_STATUS status = SEC_E_INTERNAL_ERROR;
+
+	WINPR_ASSERT(ntlm);
+
 	SecInvalidateHandle(&(ntlm->context));
 	ntlm->table = InitSecurityInterfaceEx(TEST_SSPI_INTERFACE);
 	sspi_SetAuthIdentity(&(ntlm->identity), user, domain, password);
@@ -204,8 +208,9 @@ static void test_ntlm_client_uninit(TEST_NTLM_CLIENT* ntlm)
 
 static int test_ntlm_client_authenticate(TEST_NTLM_CLIENT* ntlm)
 {
-	SECURITY_STATUS status;
+	SECURITY_STATUS status = SEC_E_INTERNAL_ERROR;
 
+	WINPR_ASSERT(ntlm);
 	if (ntlm->outputBuffer[0].pvBuffer)
 	{
 		free(ntlm->outputBuffer[0].pvBuffer);
@@ -265,8 +270,7 @@ static int test_ntlm_client_authenticate(TEST_NTLM_CLIENT* ntlm)
 
 static TEST_NTLM_CLIENT* test_ntlm_client_new(void)
 {
-	TEST_NTLM_CLIENT* ntlm;
-	ntlm = (TEST_NTLM_CLIENT*)calloc(1, sizeof(TEST_NTLM_CLIENT));
+	TEST_NTLM_CLIENT* ntlm = (TEST_NTLM_CLIENT*)calloc(1, sizeof(TEST_NTLM_CLIENT));
 
 	if (!ntlm)
 		return NULL;
@@ -308,7 +312,10 @@ typedef struct
 
 static int test_ntlm_server_init(TEST_NTLM_SERVER* ntlm)
 {
-	SECURITY_STATUS status;
+	SECURITY_STATUS status = SEC_E_INTERNAL_ERROR;
+
+	WINPR_ASSERT(ntlm);
+
 	ntlm->UseNtlmV2Hash = TRUE;
 	SecInvalidateHandle(&(ntlm->context));
 	ntlm->table = InitSecurityInterfaceEx(TEST_SSPI_INTERFACE);
@@ -375,7 +382,10 @@ static void test_ntlm_server_uninit(TEST_NTLM_SERVER* ntlm)
 
 static int test_ntlm_server_authenticate(TEST_NTLM_SERVER* ntlm)
 {
-	SECURITY_STATUS status;
+	SECURITY_STATUS status = SEC_E_INTERNAL_ERROR;
+
+	WINPR_ASSERT(ntlm);
+
 	ntlm->inputBufferDesc.ulVersion = SECBUFFER_VERSION;
 	ntlm->inputBufferDesc.cBuffers = 1;
 	ntlm->inputBufferDesc.pBuffers = ntlm->inputBuffer;
@@ -386,6 +396,7 @@ static int test_ntlm_server_authenticate(TEST_NTLM_SERVER* ntlm)
 	ntlm->outputBuffer[0].BufferType = SECBUFFER_TOKEN;
 	ntlm->outputBuffer[0].cbBuffer = ntlm->cbMaxToken;
 	ntlm->outputBuffer[0].pvBuffer = malloc(ntlm->outputBuffer[0].cbBuffer);
+	BOOL hash_set = FALSE;
 
 	if (!ntlm->outputBuffer[0].pvBuffer)
 		return -1;
@@ -395,43 +406,26 @@ static int test_ntlm_server_authenticate(TEST_NTLM_SERVER* ntlm)
 	    ntlm->fContextReq, SECURITY_NATIVE_DREP, &ntlm->context, &ntlm->outputBufferDesc,
 	    &ntlm->pfContextAttr, &ntlm->expiration);
 
-	if ((status == SEC_I_COMPLETE_AND_CONTINUE) || (status == SEC_I_COMPLETE_NEEDED))
+	if (!hash_set && status == SEC_I_CONTINUE_NEEDED)
 	{
-		SecPkgContext_AuthIdentity AuthIdentity;
-		SecPkgContext_AuthNtlmHash AuthNtlmHash;
-		ZeroMemory(&AuthIdentity, sizeof(SecPkgContext_AuthIdentity));
-		ZeroMemory(&AuthNtlmHash, sizeof(SecPkgContext_AuthNtlmHash));
-		status = ntlm->table->QueryContextAttributes(&ntlm->context, SECPKG_ATTR_AUTH_IDENTITY,
-		                                             &AuthIdentity);
+		SecPkgContext_AuthNtlmHash AuthNtlmHash = { 0 };
 
-		if (status == SEC_E_OK)
+		if (ntlm->UseNtlmV2Hash)
 		{
-			if (strcmp(AuthIdentity.User, TEST_NTLM_USER) == 0)
-			{
-				if (ntlm->UseNtlmV2Hash)
-				{
-					AuthNtlmHash.Version = 2;
-					CopyMemory(AuthNtlmHash.NtlmHash, TEST_NTLM_V2_HASH, 16);
-				}
-				else
-				{
-					AuthNtlmHash.Version = 1;
-					CopyMemory(AuthNtlmHash.NtlmHash, TEST_NTLM_HASH, 16);
-				}
-
-				status = ntlm->table->SetContextAttributes(
-				    &ntlm->context, SECPKG_ATTR_AUTH_NTLM_HASH, &AuthNtlmHash,
-				    sizeof(SecPkgContext_AuthNtlmHash));
-			}
+			AuthNtlmHash.Version = 2;
+			CopyMemory(AuthNtlmHash.NtlmHash, TEST_NTLM_V2_HASH, 16);
+		}
+		else
+		{
+			AuthNtlmHash.Version = 1;
+			CopyMemory(AuthNtlmHash.NtlmHash, TEST_NTLM_HASH, 16);
 		}
 
-		if (ntlm->table->CompleteAuthToken)
-			status = ntlm->table->CompleteAuthToken(&ntlm->context, &ntlm->outputBufferDesc);
+		status =
+		    ntlm->table->SetContextAttributes(&ntlm->context, SECPKG_ATTR_AUTH_NTLM_HASH,
+		                                      &AuthNtlmHash, sizeof(SecPkgContext_AuthNtlmHash));
 
-		if (status == SEC_I_COMPLETE_NEEDED)
-			status = SEC_E_OK;
-		else if (status == SEC_I_COMPLETE_AND_CONTINUE)
-			status = SEC_I_CONTINUE_NEEDED;
+		hash_set = TRUE;
 	}
 
 	if ((status != SEC_E_OK) && (status != SEC_I_CONTINUE_NEEDED))
@@ -447,8 +441,7 @@ static int test_ntlm_server_authenticate(TEST_NTLM_SERVER* ntlm)
 
 static TEST_NTLM_SERVER* test_ntlm_server_new(void)
 {
-	TEST_NTLM_SERVER* ntlm;
-	ntlm = (TEST_NTLM_SERVER*)calloc(1, sizeof(TEST_NTLM_SERVER));
+	TEST_NTLM_SERVER* ntlm = (TEST_NTLM_SERVER*)calloc(1, sizeof(TEST_NTLM_SERVER));
 
 	if (!ntlm)
 		return NULL;
@@ -467,9 +460,9 @@ static void test_ntlm_server_free(TEST_NTLM_SERVER* ntlm)
 
 static BOOL test_default(void)
 {
-	int status;
+	int status = 0;
 	BOOL rc = FALSE;
-	PSecBuffer pSecBuffer;
+	PSecBuffer pSecBuffer = NULL;
 	TEST_NTLM_CLIENT* client = NULL;
 	TEST_NTLM_SERVER* server = NULL;
 	BOOL DynamicTest = TRUE;
@@ -609,7 +602,7 @@ static BOOL test_default(void)
 
 	if (!DynamicTest)
 	{
-		SecPkgContext_AuthNtlmMessage AuthNtlmMessage;
+		SecPkgContext_AuthNtlmMessage AuthNtlmMessage = { 0 };
 		pSecBuffer->cbBuffer = sizeof(TEST_NTLM_CHALLENGE) - 1;
 		pSecBuffer->pvBuffer = (void*)malloc(pSecBuffer->cbBuffer);
 

@@ -154,13 +154,15 @@ static UINT audin_mac_set_format(IAudinDevice *device, const AUDIO_FORMAT *forma
 
 	if (format->wBitsPerSample == 0)
 		mac->audioFormat.mBitsPerChannel = 16;
-	
+
 	mac->audioFormat.mChannelsPerFrame = mac->format.nChannels;
 	mac->audioFormat.mFramesPerPacket = 1;
 
-	mac->audioFormat.mBytesPerFrame = mac->audioFormat.mChannelsPerFrame * (mac->audioFormat.mBitsPerChannel / 8);
-	mac->audioFormat.mBytesPerPacket = mac->audioFormat.mBytesPerFrame * mac->audioFormat.mFramesPerPacket;
-	
+	mac->audioFormat.mBytesPerFrame =
+	    mac->audioFormat.mChannelsPerFrame * (mac->audioFormat.mBitsPerChannel / 8);
+	mac->audioFormat.mBytesPerPacket =
+	    mac->audioFormat.mBytesPerFrame * mac->audioFormat.mFramesPerPacket;
+
 	mac->audioFormat.mFormatFlags = audin_mac_get_flags_for_format(format);
 	mac->audioFormat.mFormatID = audin_mac_get_format(format);
 	mac->audioFormat.mReserved = 0;
@@ -245,7 +247,6 @@ static UINT audin_mac_open(IAudinDevice *device, AudinReceive receive, void *use
 	DWORD errCode;
 	char errString[1024];
 	OSStatus devStat;
-	size_t index;
 
 	if (!mac->isAuthorized)
 		return ERROR_INTERNAL_ERROR;
@@ -263,7 +264,7 @@ static UINT audin_mac_open(IAudinDevice *device, AudinReceive receive, void *use
 		goto err_out;
 	}
 
-	for (index = 0; index < MAC_AUDIO_QUEUE_NUM_BUFFERS; index++)
+	for (size_t index = 0; index < MAC_AUDIO_QUEUE_NUM_BUFFERS; index++)
 	{
 		devStat = AudioQueueAllocateBuffer(mac->audioQueue,
 		                                   mac->FramesPerPacket * 2 * mac->format.nChannels,
@@ -379,7 +380,8 @@ static UINT audin_mac_parse_addin_args(AudinMacDevice *device, const ADDIN_ARGV 
 	return CHANNEL_RC_OK;
 }
 
-UINT mac_freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints)
+FREERDP_ENTRY_POINT(
+    UINT mac_freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints))
 {
 	DWORD errCode;
 	char errString[1024];
@@ -420,32 +422,36 @@ UINT mac_freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS
 #if defined(MAC_OS_X_VERSION_10_14)
 	if (@available(macOS 10.14, *))
 	{
-		AVAuthorizationStatus status =
-		    [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
-		switch (status)
+		@autoreleasepool
 		{
-			case AVAuthorizationStatusAuthorized:
-				mac->isAuthorized = TRUE;
-				break;
-			case AVAuthorizationStatusNotDetermined:
-				[AVCaptureDevice requestAccessForMediaType:AVMediaTypeAudio
-				                         completionHandler:^(BOOL granted) {
-					                         if (granted == YES)
-					                         {
-						                         mac->isAuthorized = TRUE;
-					                         }
-					                         else
-						                         WLog_WARN(TAG, "Microphone access denied by user");
-				                         }];
-				break;
-			case AVAuthorizationStatusRestricted:
-				WLog_WARN(TAG, "Microphone access restricted by policy");
-				break;
-			case AVAuthorizationStatusDenied:
-				WLog_WARN(TAG, "Microphone access denied by policy");
-				break;
-			default:
-				break;
+			AVAuthorizationStatus status =
+			    [AVCaptureDevice authorizationStatusForMediaType:AVMediaTypeAudio];
+			switch (status)
+			{
+				case AVAuthorizationStatusAuthorized:
+					mac->isAuthorized = TRUE;
+					break;
+				case AVAuthorizationStatusNotDetermined:
+					[AVCaptureDevice
+					    requestAccessForMediaType:AVMediaTypeAudio
+					            completionHandler:^(BOOL granted) {
+						            if (granted == YES)
+						            {
+							            mac->isAuthorized = TRUE;
+						            }
+						            else
+							            WLog_WARN(TAG, "Microphone access denied by user");
+					            }];
+					break;
+				case AVAuthorizationStatusRestricted:
+					WLog_WARN(TAG, "Microphone access restricted by policy");
+					break;
+				case AVAuthorizationStatusDenied:
+					WLog_WARN(TAG, "Microphone access denied by policy");
+					break;
+				default:
+					break;
+			}
 		}
 	}
 #endif

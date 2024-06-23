@@ -402,7 +402,7 @@ RPC_STATUS RpcServerUseProtseqIfExW(RPC_WSTR Protseq, unsigned int MaxCalls, RPC
 	return 0;
 }
 
-void RpcServerYield()
+void RpcServerYield(void)
 {
 	WLog_ERR(TAG, "Not implemented");
 }
@@ -524,7 +524,7 @@ RPC_STATUS RpcRevertToSelfEx(RPC_BINDING_HANDLE BindingHandle)
 	return 0;
 }
 
-RPC_STATUS RpcRevertToSelf()
+RPC_STATUS RpcRevertToSelf(void)
 {
 	WLog_ERR(TAG, "Not implemented");
 	return 0;
@@ -659,7 +659,7 @@ void RpcRaiseException(RPC_STATUS exception)
 	exit((int)exception);
 }
 
-RPC_STATUS RpcTestCancel()
+RPC_STATUS RpcTestCancel(void)
 {
 	WLog_ERR(TAG, "Not implemented");
 	return 0;
@@ -693,13 +693,13 @@ static UUID UUID_NIL = {
 
 RPC_STATUS UuidCreate(UUID* Uuid)
 {
-	winpr_RAND_pseudo((BYTE*)Uuid, 16);
+	winpr_RAND_pseudo(Uuid, 16);
 	return RPC_S_OK;
 }
 
 RPC_STATUS UuidCreateSequential(UUID* Uuid)
 {
-	winpr_RAND_pseudo((BYTE*)Uuid, 16);
+	winpr_RAND_pseudo(Uuid, 16);
 	return RPC_S_OK;
 }
 
@@ -731,7 +731,6 @@ RPC_STATUS UuidToStringW(const UUID* Uuid, RPC_WSTR* StringUuid)
 
 RPC_STATUS UuidFromStringA(RPC_CSTR StringUuid, UUID* Uuid)
 {
-	int index;
 	BYTE bin[36];
 
 	if (!StringUuid)
@@ -746,7 +745,7 @@ RPC_STATUS UuidFromStringA(RPC_CSTR StringUuid, UUID* Uuid)
 		return RPC_S_INVALID_STRING_UUID;
 	}
 
-	for (index = 0; index < 36; index++)
+	for (int index = 0; index < 36; index++)
 	{
 		if ((index == 8) || (index == 13) || (index == 18) || (index == 23))
 			continue;
@@ -784,7 +783,6 @@ RPC_STATUS UuidFromStringW(RPC_WSTR StringUuid, UUID* Uuid)
 
 signed int UuidCompare(const UUID* Uuid1, const UUID* Uuid2, RPC_STATUS* Status)
 {
-	int index;
 	*Status = RPC_S_OK;
 
 	if (!Uuid1)
@@ -802,7 +800,7 @@ signed int UuidCompare(const UUID* Uuid1, const UUID* Uuid2, RPC_STATUS* Status)
 	if (Uuid1->Data3 != Uuid2->Data3)
 		return (Uuid1->Data3 < Uuid2->Data3) ? -1 : 1;
 
-	for (index = 0; index < 8; index++)
+	for (int index = 0; index < 8; index++)
 	{
 		if (Uuid1->Data4[index] != Uuid2->Data4[index])
 			return (Uuid1->Data4[index] < Uuid2->Data4[index]) ? -1 : 1;

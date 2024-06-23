@@ -21,11 +21,13 @@
 
 #include <winpr/crt.h>
 
-#ifdef HAVE_UNISTD_H
+#ifdef WINPR_HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
 #include <winpr/security.h>
+
+#include "../handle/handle.h"
 
 /**
  * api-ms-win-security-base-l1-2-0.dll:
@@ -210,3 +212,15 @@ BOOL SetSecurityDescriptorSacl(PSECURITY_DESCRIPTOR pSecurityDescriptor, BOOL bS
 }
 
 #endif
+
+BOOL AccessTokenIsValid(HANDLE handle)
+{
+	WINPR_HANDLE* h = (WINPR_HANDLE*)handle;
+
+	if (!h || (h->Type != HANDLE_TYPE_ACCESS_TOKEN))
+	{
+		SetLastError(ERROR_INVALID_PARAMETER);
+		return FALSE;
+	}
+	return TRUE;
+}

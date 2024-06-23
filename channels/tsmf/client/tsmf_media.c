@@ -27,10 +27,6 @@
 #include <string.h>
 #include <signal.h>
 
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
-#endif
-
 #ifndef _WIN32
 #include <sys/time.h>
 #endif
@@ -42,6 +38,7 @@
 #include <winpr/stream.h>
 #include <winpr/collections.h>
 
+#include <freerdp/freerdp.h>
 #include <freerdp/client/tsmf.h>
 
 #include "tsmf_constants.h"
@@ -169,10 +166,9 @@ static UINT64 get_current_time(void)
 
 static TSMF_SAMPLE* tsmf_stream_pop_sample(TSMF_STREAM* stream, int sync)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* s;
-	TSMF_SAMPLE* sample;
+	UINT32 count = 0;
+	TSMF_STREAM* s = NULL;
+	TSMF_SAMPLE* sample = NULL;
 	BOOL pending = FALSE;
 	TSMF_PRESENTATION* presentation = NULL;
 
@@ -202,7 +198,7 @@ static TSMF_SAMPLE* tsmf_stream_pop_sample(TSMF_STREAM* stream, int sync)
 						ArrayList_Lock(presentation->stream_list);
 						count = ArrayList_Count(presentation->stream_list);
 
-						for (index = 0; index < count; index++)
+						for (UINT32 index = 0; index < count; index++)
 						{
 							s = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 
@@ -291,8 +287,8 @@ static BOOL tsmf_sample_queue_ack(TSMF_SAMPLE* sample)
 static BOOL tsmf_stream_process_ack(void* arg, BOOL force)
 {
 	TSMF_STREAM* stream = arg;
-	TSMF_SAMPLE* sample;
-	UINT64 ack_time;
+	TSMF_SAMPLE* sample = NULL;
+	UINT64 ack_time = 0;
 	BOOL rc = FALSE;
 
 	if (!stream)
@@ -344,8 +340,8 @@ finally:
 TSMF_PRESENTATION* tsmf_presentation_new(const BYTE* guid,
                                          IWTSVirtualChannelCallback* pChannelCallback)
 {
-	wObject* obj;
-	TSMF_PRESENTATION* presentation;
+	wObject* obj = NULL;
+	TSMF_PRESENTATION* presentation = NULL;
 
 	if (!guid || !pChannelCallback)
 		return NULL;
@@ -384,12 +380,10 @@ error_stream_list:
 
 static char* guid_to_string(const BYTE* guid, char* str, size_t len)
 {
-	size_t i;
-
 	if (!guid || !str)
 		return NULL;
 
-	for (i = 0; i < GUID_SIZE && (len > 2 * i); i++)
+	for (size_t i = 0; i < GUID_SIZE && (len > 2 * i); i++)
 		sprintf_s(str + (2 * i), len - 2 * i, "%02" PRIX8 "", guid[i]);
 
 	return str;
@@ -397,15 +391,14 @@ static char* guid_to_string(const BYTE* guid, char* str, size_t len)
 
 TSMF_PRESENTATION* tsmf_presentation_find_by_id(const BYTE* guid)
 {
-	UINT32 index;
-	UINT32 count;
+	UINT32 count = 0;
 	BOOL found = FALSE;
-	char guid_str[GUID_SIZE * 2 + 1];
-	TSMF_PRESENTATION* presentation;
+	char guid_str[GUID_SIZE * 2 + 1] = { 0 };
+	TSMF_PRESENTATION* presentation = NULL;
 	ArrayList_Lock(presentation_list);
 	count = ArrayList_Count(presentation_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		presentation = (TSMF_PRESENTATION*)ArrayList_GetItem(presentation_list, index);
 
@@ -427,7 +420,7 @@ TSMF_PRESENTATION* tsmf_presentation_find_by_id(const BYTE* guid)
 
 static BOOL tsmf_sample_playback_video(TSMF_SAMPLE* sample)
 {
-	UINT64 t;
+	UINT64 t = 0;
 	TSMF_VIDEO_FRAME_EVENT event;
 	TSMF_STREAM* stream = sample->stream;
 	TSMF_PRESENTATION* presentation = stream->presentation;
@@ -483,20 +476,22 @@ static BOOL tsmf_sample_playback_video(TSMF_SAMPLE* sample)
 		   extract the Y values to create a grayscale image. */
 		static int frame_id = 0;
 		char buf[100];
-		FILE* fp;
 
 		if ((frame_id % 30) == 0)
 		{
 			sprintf_s(buf, sizeof(buf), "/tmp/FreeRDP_Frame_%d.ppm", frame_id);
-			fp = fopen(buf, "wb");
-			fwrite("P5\n", 1, 3, fp);
-			sprintf_s(buf, sizeof(buf), "%"PRIu32" %"PRIu32"\n", sample->stream->width,
-			          sample->stream->height);
-			fwrite(buf, 1, strnlen(buf, sizeof(buf)), fp);
-			fwrite("255\n", 1, 4, fp);
-			fwrite(sample->data, 1, sample->stream->width * sample->stream->height, fp);
-			fflush(fp);
-			fclose(fp);
+			FILE* fp = fopen(buf, "wb");
+			if (fp)
+			{
+				fwrite("P5\n", 1, 3, fp);
+				sprintf_s(buf, sizeof(buf), "%"PRIu32" %"PRIu32"\n", sample->stream->width,
+				          sample->stream->height);
+				fwrite(buf, 1, strnlen(buf, sizeof(buf)), fp);
+				fwrite("255\n", 1, 4, fp);
+				fwrite(sample->data, 1, sample->stream->width * sample->stream->height, fp);
+				fflush(fp);
+				fclose(fp);
+			}
 		}
 
 		frame_id++;
@@ -522,7 +517,7 @@ static BOOL tsmf_sample_playback_audio(TSMF_SAMPLE* sample)
 {
 	UINT64 latency = 0;
 	TSMF_STREAM* stream = sample->stream;
-	BOOL ret;
+	BOOL ret = 0;
 	DEBUG_TSMF("MessageId %" PRIu32 " EndTime %" PRIu64 " consumed.", sample->sample_id,
 	           sample->end_time);
 
@@ -560,8 +555,8 @@ static BOOL tsmf_sample_playback_audio(TSMF_SAMPLE* sample)
 static BOOL tsmf_sample_playback(TSMF_SAMPLE* sample)
 {
 	BOOL ret = FALSE;
-	UINT32 width;
-	UINT32 height;
+	UINT32 width = 0;
+	UINT32 height = 0;
 	UINT32 pixfmt = 0;
 	TSMF_STREAM* stream = sample->stream;
 
@@ -580,11 +575,10 @@ static BOOL tsmf_sample_playback(TSMF_SAMPLE* sample)
 				TSMF_PRESENTATION* presentation = stream->presentation;
 				ArrayList_Lock(presentation->stream_list);
 				int count = ArrayList_Count(presentation->stream_list);
-				int index = 0;
 
-				for (index = 0; index < count; index++)
+				for (size_t index = 0; index < count; index++)
 				{
-					UINT64 time_diff;
+					UINT64 time_diff = 0;
 					temp_stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 
 					if (temp_stream->major_type == TSMF_MAJOR_TYPE_AUDIO)
@@ -691,7 +685,6 @@ static BOOL tsmf_sample_playback(TSMF_SAMPLE* sample)
 	}
 	else
 	{
-		TSMF_STREAM* stream = sample->stream;
 		UINT64 ack_anticipation_time = get_current_time();
 		BOOL buffer_filled = TRUE;
 
@@ -819,7 +812,7 @@ static DWORD WINAPI tsmf_stream_playback_func(LPVOID arg)
 	TSMF_STREAM* stream = (TSMF_STREAM*)arg;
 	TSMF_PRESENTATION* presentation = stream->presentation;
 	UINT error = CHANNEL_RC_OK;
-	DWORD status;
+	DWORD status = 0;
 	DEBUG_TSMF("in %" PRIu32 "", stream->stream_id);
 
 	if (stream->major_type == TSMF_MAJOR_TYPE_AUDIO && stream->sample_rate && stream->channels &&
@@ -973,16 +966,14 @@ static BOOL tsmf_stream_change_volume(TSMF_STREAM* stream, UINT32 newVolume, UIN
 BOOL tsmf_presentation_volume_changed(TSMF_PRESENTATION* presentation, UINT32 newVolume,
                                       UINT32 muted)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	BOOL ret = TRUE;
 	presentation->volume = newVolume;
 	presentation->muted = muted;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 		ret &= tsmf_stream_change_volume(stream, newVolume, muted);
@@ -994,14 +985,12 @@ BOOL tsmf_presentation_volume_changed(TSMF_PRESENTATION* presentation, UINT32 ne
 
 BOOL tsmf_presentation_paused(TSMF_PRESENTATION* presentation)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	BOOL ret = TRUE;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 		ret &= tsmf_stream_pause(stream);
@@ -1013,14 +1002,12 @@ BOOL tsmf_presentation_paused(TSMF_PRESENTATION* presentation)
 
 BOOL tsmf_presentation_restarted(TSMF_PRESENTATION* presentation)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	BOOL ret = TRUE;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 		ret &= tsmf_stream_restart(stream);
@@ -1032,14 +1019,12 @@ BOOL tsmf_presentation_restarted(TSMF_PRESENTATION* presentation)
 
 BOOL tsmf_presentation_start(TSMF_PRESENTATION* presentation)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	BOOL ret = TRUE;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 		ret &= tsmf_stream_start(stream);
@@ -1056,13 +1041,11 @@ BOOL tsmf_presentation_start(TSMF_PRESENTATION* presentation)
  */
 UINT tsmf_presentation_sync(TSMF_PRESENTATION* presentation)
 {
-	UINT32 index;
-	UINT32 count;
-	UINT error;
+	UINT error = 0;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		TSMF_STREAM* stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 
@@ -1080,14 +1063,12 @@ UINT tsmf_presentation_sync(TSMF_PRESENTATION* presentation)
 
 BOOL tsmf_presentation_stop(TSMF_PRESENTATION* presentation)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	BOOL ret = TRUE;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 		ret &= tsmf_stream_stop(stream);
@@ -1103,9 +1084,7 @@ BOOL tsmf_presentation_set_geometry_info(TSMF_PRESENTATION* presentation, UINT32
                                          UINT32 width, UINT32 height, int num_rects,
                                          RDP_RECT* rects)
 {
-	UINT32 index;
-	UINT32 count;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	void* tmp_rects = NULL;
 	BOOL ret = TRUE;
 
@@ -1133,9 +1112,9 @@ BOOL tsmf_presentation_set_geometry_info(TSMF_PRESENTATION* presentation, UINT32
 	if (presentation->rects)
 		CopyMemory(presentation->rects, rects, sizeof(RDP_RECT) * num_rects);
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 
@@ -1208,8 +1187,8 @@ void tsmf_presentation_free(TSMF_PRESENTATION* presentation)
 TSMF_STREAM* tsmf_stream_new(TSMF_PRESENTATION* presentation, UINT32 stream_id,
                              rdpContext* rdpcontext)
 {
-	wObject* obj;
-	TSMF_STREAM* stream;
+	wObject* obj = NULL;
+	TSMF_STREAM* stream = NULL;
 	stream = tsmf_stream_find_by_id(presentation, stream_id);
 
 	if (stream)
@@ -1315,14 +1294,12 @@ void tsmf_stream_start_threads(TSMF_STREAM* stream)
 
 TSMF_STREAM* tsmf_stream_find_by_id(TSMF_PRESENTATION* presentation, UINT32 stream_id)
 {
-	UINT32 index;
-	UINT32 count;
 	BOOL found = FALSE;
-	TSMF_STREAM* stream;
+	TSMF_STREAM* stream = NULL;
 	ArrayList_Lock(presentation->stream_list);
-	count = ArrayList_Count(presentation->stream_list);
+	size_t count = ArrayList_Count(presentation->stream_list);
 
-	for (index = 0; index < count; index++)
+	for (size_t index = 0; index < count; index++)
 	{
 		stream = (TSMF_STREAM*)ArrayList_GetItem(presentation->stream_list, index);
 
@@ -1477,7 +1454,7 @@ BOOL tsmf_stream_push_sample(TSMF_STREAM* stream, IWTSVirtualChannelCallback* pC
                              UINT32 sample_id, UINT64 start_time, UINT64 end_time, UINT64 duration,
                              UINT32 extensions, UINT32 data_size, BYTE* data)
 {
-	TSMF_SAMPLE* sample;
+	TSMF_SAMPLE* sample = NULL;
 	SetEvent(stream->ready);
 
 	if (TERMINATING)
@@ -1540,7 +1517,7 @@ static void tsmf_signal_handler(int s)
 
 BOOL tsmf_media_init(void)
 {
-	wObject* obj;
+	wObject* obj = NULL;
 #ifndef _WIN32
 	struct sigaction sigtrap;
 	sigtrap.sa_handler = tsmf_signal_handler;

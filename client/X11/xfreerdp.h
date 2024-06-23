@@ -135,6 +135,7 @@ typedef struct touch_contact
 	double last_y;
 
 } touchContact;
+
 #endif
 
 struct xf_context
@@ -176,15 +177,10 @@ struct xf_context
 	BOOL UseXThreads;
 	BOOL cursorHidden;
 
-	HGDI_DC hdc;
 	UINT32 bitmap_size;
 	BYTE* bitmap_buffer;
 
 	BOOL frame_begin;
-	UINT16 frame_x1;
-	UINT16 frame_y1;
-	UINT16 frame_x2;
-	UINT16 frame_y2;
 
 	int XInputOpcode;
 
@@ -203,7 +199,6 @@ struct xf_context
 	BOOL focused;
 	BOOL mouse_active;
 	BOOL fullscreen_toggle;
-	BOOL controlToggle;
 	UINT32 KeyboardLayout;
 	BOOL KeyboardState[256];
 	XModifierKeymap* modifierMap;
@@ -211,6 +206,7 @@ struct xf_context
 	wArrayList* xevents;
 	BOOL actionScriptExists;
 
+	int attribs_mask;
 	XSetWindowAttributes attribs;
 	BOOL complex_regions;
 	VIRTUAL_SCREEN vscreen;
@@ -260,6 +256,18 @@ struct xf_context
 	Atom WM_PROTOCOLS;
 	Atom WM_DELETE_WINDOW;
 
+	/* Allow actions */
+	Atom NET_WM_ALLOWED_ACTIONS;
+
+	Atom NET_WM_ACTION_CLOSE;
+	Atom NET_WM_ACTION_MINIMIZE;
+	Atom NET_WM_ACTION_MOVE;
+	Atom NET_WM_ACTION_RESIZE;
+	Atom NET_WM_ACTION_MAXIMIZE_HORZ;
+	Atom NET_WM_ACTION_MAXIMIZE_VERT;
+	Atom NET_WM_ACTION_FULLSCREEN;
+	Atom NET_WM_ACTION_CHANGE_DESKTOP;
+
 	/* Channels */
 #if defined(CHANNEL_TSMF_CLIENT)
 	TsmfClientContext* tsmf;
@@ -268,7 +276,6 @@ struct xf_context
 	xfClipboard* clipboard;
 	CliprdrClientContext* cliprdr;
 	xfVideoContext* xfVideo;
-	EncomspClientContext* encomsp;
 	xfDispContext* xfDisp;
 
 	RailClientContext* rail;
@@ -282,7 +289,7 @@ struct xf_context
 	button_map button_map[NUM_BUTTONS_MAPPED];
 	BYTE savedMaximizedState;
 	UINT32 locked;
-	BOOL firstPressRightCtrl;
+	BOOL wasRightCtrlAlreadyPressed;
 	BOOL ungrabKeyboardWithRightCtrl;
 
 #if defined(WITH_XI)
@@ -298,14 +305,12 @@ struct xf_context
 #endif
 	BOOL xi_rawevent;
 	BOOL xi_event;
+	HANDLE pipethread;
 };
 
 BOOL xf_create_window(xfContext* xfc);
+BOOL xf_create_image(xfContext* xfc);
 void xf_toggle_fullscreen(xfContext* xfc);
-BOOL xf_toggle_control(xfContext* xfc);
-
-void xf_encomsp_init(xfContext* xfc, EncomspClientContext* encomsp);
-void xf_encomsp_uninit(xfContext* xfc, EncomspClientContext* encomsp);
 
 enum XF_EXIT_CODE
 {
@@ -358,7 +363,7 @@ enum XF_EXIT_CODE
 	XF_EXIT_TLS_CONNECT_FAILED = 143,
 	XF_EXIT_INSUFFICIENT_PRIVILEGES = 144,
 	XF_EXIT_CONNECT_CANCELLED = 145,
-	XF_EXIT_SECURITY_NEGO_CONNECT_FAILED = 146,
+
 	XF_EXIT_CONNECT_TRANSPORT_FAILED = 147,
 	XF_EXIT_CONNECT_PASSWORD_EXPIRED = 148,
 	XF_EXIT_CONNECT_PASSWORD_MUST_CHANGE = 149,
@@ -376,8 +381,8 @@ enum XF_EXIT_CODE
 	XF_EXIT_UNKNOWN = 255,
 };
 
-#define xf_lock_x11(xfc) xf_lock_x11_(xfc, __FUNCTION__)
-#define xf_unlock_x11(xfc) xf_unlock_x11_(xfc, __FUNCTION__)
+#define xf_lock_x11(xfc) xf_lock_x11_(xfc, __func__)
+#define xf_unlock_x11(xfc) xf_unlock_x11_(xfc, __func__)
 
 void xf_lock_x11_(xfContext* xfc, const char* fkt);
 void xf_unlock_x11_(xfContext* xfc, const char* fkt);
@@ -385,10 +390,12 @@ void xf_unlock_x11_(xfContext* xfc, const char* fkt);
 BOOL xf_picture_transform_required(xfContext* xfc);
 
 #define xf_draw_screen(_xfc, _x, _y, _w, _h) \
-	xf_draw_screen_((_xfc), (_x), (_y), (_w), (_h), __FUNCTION__, __FILE__, __LINE__)
+	xf_draw_screen_((_xfc), (_x), (_y), (_w), (_h), __func__, __FILE__, __LINE__)
 void xf_draw_screen_(xfContext* xfc, int x, int y, int w, int h, const char* fkt, const char* file,
                      int line);
 
-FREERDP_API DWORD xf_exit_code_from_disconnect_reason(DWORD reason);
+BOOL xf_keyboard_update_modifier_map(xfContext* xfc);
+
+DWORD xf_exit_code_from_disconnect_reason(DWORD reason);
 
 #endif /* FREERDP_CLIENT_X11_FREERDP_H */

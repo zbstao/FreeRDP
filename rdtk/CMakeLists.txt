@@ -24,63 +24,56 @@ set(RDTK_VERSION_FULL "${RDTK_VERSION}")
 set(RDTK_API_VERSION "${RDTK_VERSION_MAJOR}")
 
 if (NOT FREERDP_UNIFIED_BUILD)
-	cmake_minimum_required(VERSION 3.4)
+	cmake_minimum_required(VERSION 3.13)
 	project(RdTk VERSION ${RDTK_VERSION} LANGUAGES C)
 
-	set(CMAKE_C_STANDARD 99)
+	set(CMAKE_C_STANDARD 11)
 	set(CMAKE_C_STANDARD_REQUIRED ON)
 	set(CMAKE_C_EXTENSIONS ON)
 
-	set(CMAKE_COLOR_MAKEFILE ON)
-
 	set(WINPR_VERSION_MAJOR 3)
-	option(BUILD_SHARED_LIBS "Build shared libraries" ON)
-    option(EXPORT_ALL_SYMBOLS "Export all symbols form library" OFF)
+	option(EXPORT_ALL_SYMBOLS "Export all symbols form library" OFF)
 	option(BUILD_TESTING "Build library unit tests" ON)
-	option(WITH_LIBRARY_VERSIONING "Use library version triplet" ON)
 
-    # Default to release build type
-    if(NOT CMAKE_BUILD_TYPE)
-       set(CMAKE_BUILD_TYPE "Release")
-    endif()
-
-    if(CMAKE_COMPILER_IS_GNUCC)
-        if(NOT EXPORT_ALL_SYMBOLS)
-            message(STATUS "GCC default symbol visibility: hidden")
-            set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
-        endif()
-    endif()
+	if(CMAKE_COMPILER_IS_GNUCC)
+		if(NOT EXPORT_ALL_SYMBOLS)
+			message(STATUS "GCC default symbol visibility: hidden")
+			set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fvisibility=hidden")
+		endif()
+	endif()
 else()
 	set(WINPR_VERSION_MAJOR ${FREERDP_VERSION_MAJOR})
 endif()
 
 # Include our extra modules
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../cmake/)
+include(CommonConfigOptions)
 
 # Include cmake modules
 include(CheckIncludeFiles)
 include(CheckLibraryExists)
 include(CheckStructHasMember)
-include(FindPkgConfig)
 include(TestBigEndian)
 
 # Check for cmake compatibility (enable/disable features)
 include(CheckCmakeCompat)
 include(FindFeature)
 include(CheckCCompilerFlag)
-include(GNUInstallDirsWrapper)
 include(CMakePackageConfigHelpers)
 include (SetFreeRDPCMakeInstallDir)
+
+option(RDTK_FORCE_STATIC_BUILD "Force RDTK to be build as static libary (recommended)" OFF)
+if (RDTK_FORCE_STATIC_BUILD)
+	set(BUILD_SHARED_LIBS OFF)
+endif()
 
 add_definitions(-DRDTK_EXPORTS)
 
 if (NOT IOS)
-	check_include_files(stdbool.h WINPR_HAVE_STDBOOL_H)
-	if (NOT WINPR_HAVE_STDBOOL_H)
+	check_include_files(stdbool.h RDTK_HAVE_STDBOOL_H)
+	if (NOT RDTK_HAVE_STDBOOL_H)
 		include_directories(BEFORE ${CMAKE_CURRENT_SOURCE_DIR}/../compat/stdbool)
 	endif()
-else()
-	set(WINPR_HAVE_STDBOOL_H 1)
 endif()
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -102,7 +95,9 @@ add_subdirectory(librdtk)
 add_subdirectory(templates)
 add_subdirectory(include)
 
-install(EXPORT rdtk DESTINATION ${RDTK_CMAKE_INSTALL_DIR})
+if (NOT RDTK_FORCE_STATIC_BUILD)
+	install(EXPORT rdtk DESTINATION ${RDTK_CMAKE_INSTALL_DIR})
+endif()
 
 if(WITH_SAMPLE)
 	if(WITH_X11)

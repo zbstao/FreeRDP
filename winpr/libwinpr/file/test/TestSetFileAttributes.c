@@ -35,22 +35,21 @@ static const DWORD allflags[] = {
 static BOOL test_SetFileAttributesA(void)
 {
 	BOOL rc = FALSE;
-	HANDLE handle;
-	DWORD x;
+	HANDLE handle = NULL;
 	const DWORD flags[] = { 0, FILE_ATTRIBUTE_READONLY };
 	char* name = GetKnownSubPath(KNOWN_PATH_TEMP, "afsklhjwe4oq5iu432oijrlkejadlkhjaklhfdkahfd");
 	if (!name)
 		goto fail;
 
-	for (x = 0; x < ARRAYSIZE(allflags); x++)
+	for (size_t x = 0; x < ARRAYSIZE(allflags); x++)
 	{
 		const DWORD flag = allflags[x];
-		rc = SetFileAttributesA(NULL, flag);
-		if (rc)
+		const BOOL brc = SetFileAttributesA(NULL, flag);
+		if (brc)
 			goto fail;
 
-		rc = SetFileAttributesA(name, flag);
-		if (rc)
+		const BOOL crc = SetFileAttributesA(name, flag);
+		if (crc)
 			goto fail;
 	}
 
@@ -60,12 +59,12 @@ static BOOL test_SetFileAttributesA(void)
 		goto fail;
 	CloseHandle(handle);
 
-	for (x = 0; x < ARRAYSIZE(flags); x++)
+	for (size_t x = 0; x < ARRAYSIZE(flags); x++)
 	{
-		DWORD attr;
+		DWORD attr = 0;
 		const DWORD flag = flags[x];
-		rc = SetFileAttributesA(name, flag);
-		if (!rc)
+		const BOOL brc = SetFileAttributesA(name, flag);
+		if (!brc)
 			goto fail;
 
 		attr = GetFileAttributesA(name);
@@ -75,6 +74,8 @@ static BOOL test_SetFileAttributesA(void)
 				goto fail;
 		}
 	}
+
+	rc = TRUE;
 
 fail:
 	DeleteFileA(name);
@@ -86,24 +87,25 @@ static BOOL test_SetFileAttributesW(void)
 {
 	BOOL rc = FALSE;
 	WCHAR* name = NULL;
-	HANDLE handle;
-	DWORD x;
+	HANDLE handle = NULL;
 	const DWORD flags[] = { 0, FILE_ATTRIBUTE_READONLY };
 	char* base = GetKnownSubPath(KNOWN_PATH_TEMP, "afsklhjwe4oq5iu432oijrlkejadlkhjaklhfdkahfd");
 	if (!base)
 		goto fail;
 
-	ConvertToUnicode(CP_UTF8, 0, base, -1, &name, 0);
+	name = ConvertUtf8ToWCharAlloc(base, NULL);
+	if (!name)
+		goto fail;
 
-	for (x = 0; x < ARRAYSIZE(allflags); x++)
+	for (size_t x = 0; x < ARRAYSIZE(allflags); x++)
 	{
 		const DWORD flag = allflags[x];
-		rc = SetFileAttributesW(NULL, flag);
-		if (rc)
+		const BOOL brc = SetFileAttributesW(NULL, flag);
+		if (brc)
 			goto fail;
 
-		rc = SetFileAttributesW(name, flag);
-		if (rc)
+		const BOOL crc = SetFileAttributesW(name, flag);
+		if (crc)
 			goto fail;
 	}
 
@@ -113,12 +115,12 @@ static BOOL test_SetFileAttributesW(void)
 		goto fail;
 	CloseHandle(handle);
 
-	for (x = 0; x < ARRAYSIZE(flags); x++)
+	for (size_t x = 0; x < ARRAYSIZE(flags); x++)
 	{
-		DWORD attr;
+		DWORD attr = 0;
 		const DWORD flag = flags[x];
-		rc = SetFileAttributesW(name, flag);
-		if (!rc)
+		const BOOL brc = SetFileAttributesW(name, flag);
+		if (!brc)
 			goto fail;
 
 		attr = GetFileAttributesW(name);
@@ -129,6 +131,7 @@ static BOOL test_SetFileAttributesW(void)
 		}
 	}
 
+	rc = TRUE;
 fail:
 	DeleteFileW(name);
 	free(name);

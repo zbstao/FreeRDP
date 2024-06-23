@@ -22,24 +22,21 @@
 #ifndef WINPR_SMARTCARD_H
 #define WINPR_SMARTCARD_H
 
+#include <winpr/platform.h>
 #include <winpr/winpr.h>
 #include <winpr/wtypes.h>
 
 #include <winpr/io.h>
 #include <winpr/error.h>
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
+WINPR_PRAGMA_DIAG_PUSH
+WINPR_PRAGMA_DIAG_IGNORED_RESERVED_ID_MACRO
 
 #ifndef _WINSCARD_H_
 #define _WINSCARD_H_ /* do not include winscard.h */
 #endif
 
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+WINPR_PRAGMA_DIAG_POP
 
 #ifndef SCARD_S_SUCCESS
 
@@ -619,9 +616,9 @@ extern "C"
 {
 #endif
 
-	extern const SCARD_IO_REQUEST g_rgSCardT0Pci;
-	extern const SCARD_IO_REQUEST g_rgSCardT1Pci;
-	extern const SCARD_IO_REQUEST g_rgSCardRawPci;
+	WINPR_API extern const SCARD_IO_REQUEST g_rgSCardT0Pci;
+	WINPR_API extern const SCARD_IO_REQUEST g_rgSCardT1Pci;
+	WINPR_API extern const SCARD_IO_REQUEST g_rgSCardRawPci;
 
 #define SCARD_PCI_T0 (&g_rgSCardT0Pci)
 #define SCARD_PCI_T1 (&g_rgSCardT1Pci)
@@ -1208,6 +1205,10 @@ extern "C"
 	WINSCARDAPI const char* WINAPI SCardGetScopeString(DWORD dwScope);
 	WINSCARDAPI const char* WINAPI SCardGetCardStateString(DWORD dwCardState);
 	WINSCARDAPI char* WINAPI SCardGetReaderStateString(DWORD dwReaderState);
+
+	WINPR_API BOOL WinSCard_LoadApiTableFunctions(PSCardApiFunctionTable pWinSCardApiTable,
+	                                              HMODULE hWinSCardLibrary);
+	WINPR_API const SCardApiFunctionTable* WinPR_GetSCardApiFunctionTable(void);
 
 #ifdef __cplusplus
 }

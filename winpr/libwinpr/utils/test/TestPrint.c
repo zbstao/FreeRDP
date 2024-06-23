@@ -1,4 +1,5 @@
 
+#include <math.h>
 #include <winpr/crt.h>
 #include <winpr/tchar.h>
 #include <winpr/print.h>
@@ -14,11 +15,7 @@
  * http://www.codingunit.com/printf-format-specifiers-format-conversions-and-formatted-output
  */
 
-#if 0
 #define _printf printf
-#else
-#define _printf wprintfx
-#endif
 
 static BOOL test_bin_tohex_string(void)
 {
@@ -306,8 +303,10 @@ fail:
 
 int TestPrint(int argc, char* argv[])
 {
-	int a, b;
-	float c, d;
+	int a = 0;
+	int b = 0;
+	float c = NAN;
+	float d = NAN;
 
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
@@ -325,7 +324,7 @@ int TestPrint(int argc, char* argv[])
 	_printf("%3d\n", b);
 	_printf("%03d\n", b);
 	c = 15.3f;
-	d = c / 3;
+	d = c / 3.0f;
 	_printf("%3.2f\n", d);
 
 	/**
@@ -347,7 +346,7 @@ int TestPrint(int argc, char* argv[])
 	 * 300 148.889
 	 */
 
-	for (a = 0; a <= 300; a = a + 20)
+	for (int a = 0; a <= 300; a = a + 20)
 		_printf("%3d %06.3f\n", a, (5.0 / 9.0) * (a - 32));
 
 	/**
@@ -370,7 +369,7 @@ int TestPrint(int argc, char* argv[])
 	_printf("Hexadecimal: %x/%X\n", 255, 255);
 	_printf("Octal: %o\n", 255);
 	_printf("Unsigned value: %u\n", 150);
-	_printf("Just print the percentage sign %%\n", 10);
+	_printf("Just print the percentage sign %%\n");
 
 	/**
 	 * :Hello, world!:

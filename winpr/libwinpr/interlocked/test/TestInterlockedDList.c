@@ -12,14 +12,14 @@ typedef struct
 
 int TestInterlockedDList(int argc, char* argv[])
 {
-	ULONG Count;
-	PLIST_ITEM pListItem;
-	WINPR_PLIST_ENTRY pListHead;
-	WINPR_PLIST_ENTRY pListEntry;
+	ULONG Count = 0;
+	PLIST_ITEM pListItem = NULL;
+	WINPR_PLIST_ENTRY pListHead = NULL;
+	WINPR_PLIST_ENTRY pListEntry = NULL;
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
-	pListHead =
-	    (WINPR_PLIST_ENTRY)_aligned_malloc(sizeof(WINPR_LIST_ENTRY), MEMORY_ALLOCATION_ALIGNMENT);
+	pListHead = (WINPR_PLIST_ENTRY)winpr_aligned_malloc(sizeof(WINPR_LIST_ENTRY),
+	                                                    MEMORY_ALLOCATION_ALIGNMENT);
 
 	if (!pListHead)
 	{
@@ -41,7 +41,8 @@ int TestInterlockedDList(int argc, char* argv[])
 
 	for (Count = 1; Count <= 10; Count += 1)
 	{
-		pListItem = (PLIST_ITEM)_aligned_malloc(sizeof(LIST_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
+		pListItem =
+		    (PLIST_ITEM)winpr_aligned_malloc(sizeof(LIST_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
 		pListItem->Signature = Count;
 		InsertHeadList(pListHead, &(pListItem->ItemEntry));
 	}
@@ -50,7 +51,7 @@ int TestInterlockedDList(int argc, char* argv[])
 	{
 		pListEntry = RemoveHeadList(pListHead);
 		pListItem = (PLIST_ITEM)pListEntry;
-		_aligned_free(pListItem);
+		winpr_aligned_free(pListItem);
 	}
 
 	/* InsertTailList / RemoveTailList */
@@ -59,7 +60,8 @@ int TestInterlockedDList(int argc, char* argv[])
 
 	for (Count = 1; Count <= 10; Count += 1)
 	{
-		pListItem = (PLIST_ITEM)_aligned_malloc(sizeof(LIST_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
+		pListItem =
+		    (PLIST_ITEM)winpr_aligned_malloc(sizeof(LIST_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
 		pListItem->Signature = Count;
 		InsertTailList(pListHead, &(pListItem->ItemEntry));
 	}
@@ -68,10 +70,10 @@ int TestInterlockedDList(int argc, char* argv[])
 	{
 		pListEntry = RemoveTailList(pListHead);
 		pListItem = (PLIST_ITEM)pListEntry;
-		_aligned_free(pListItem);
+		winpr_aligned_free(pListItem);
 	}
 
-	_aligned_free(pListHead);
+	winpr_aligned_free(pListHead);
 
 	return 0;
 }

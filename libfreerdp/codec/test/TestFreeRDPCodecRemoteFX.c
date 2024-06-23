@@ -809,16 +809,15 @@ static INLINE size_t fuzzyCompare(BYTE b1, BYTE b2)
 
 static BOOL fuzzyCompareImage(const UINT32* crefImage, const BYTE* img, size_t npixels)
 {
-	size_t i;
 	size_t totalDelta = 0;
 
-	for (i = 0; i < npixels; i++, crefImage++)
+	for (size_t i = 0; i < npixels; i++, crefImage++)
 	{
 		BYTE A = *img++;
 		BYTE R = *img++;
 		BYTE G = *img++;
 		BYTE B = *img++;
-		size_t delta;
+		size_t delta = 0;
 
 		if (A != 0x00)
 			return FALSE;
@@ -877,8 +876,10 @@ int TestFreeRDPCodecRemoteFX(int argc, char* argv[])
 
 #if 0
 	FILE *f = fopen("/tmp/windows.data", "w");
-	fwrite(dest, IMG_WIDTH * IMG_HEIGHT, FORMAT_SIZE, f);
-	fclose(f);
+	if (f) {
+		fwrite(dest, IMG_WIDTH * IMG_HEIGHT, FORMAT_SIZE, f);
+		fclose(f);
+	}
 #endif
 
 	if (!fuzzyCompareImage(srefImage, dest, IMG_WIDTH * IMG_HEIGHT))

@@ -29,7 +29,9 @@
 typedef enum
 {
 	FILTER_TYPE_KEYBOARD,                              /* proxyKeyboardEventInfo */
+	FILTER_TYPE_UNICODE,                               /* proxyUnicodeEventInfo */
 	FILTER_TYPE_MOUSE,                                 /* proxyMouseEventInfo */
+	FILTER_TYPE_MOUSE_EX,                              /* proxyMouseExEventInfo */
 	FILTER_TYPE_CLIENT_PASSTHROUGH_CHANNEL_DATA,       /* proxyChannelDataEventInfo */
 	FILTER_TYPE_SERVER_PASSTHROUGH_CHANNEL_DATA,       /* proxyChannelDataEventInfo */
 	FILTER_TYPE_CLIENT_PASSTHROUGH_DYN_CHANNEL_CREATE, /* proxyChannelDataEventInfo */
@@ -37,6 +39,9 @@ typedef enum
 	FILTER_TYPE_SERVER_PEER_LOGON,                     /* proxyServerPeerLogon */
 	FILTER_TYPE_CLIENT_PASSTHROUGH_CHANNEL_CREATE,     /* proxyChannelDataEventInfo */
 
+	FILTER_TYPE_STATIC_INTERCEPT_LIST, /* proxyChannelToInterceptData */
+	FILTER_TYPE_DYN_INTERCEPT_LIST,    /* proxyChannelToInterceptData */
+	FILTER_TYPE_INTERCEPT_CHANNEL,     /* proxyDynChannelInterceptData */
 	FILTER_LAST
 } PF_FILTER_TYPE;
 
@@ -51,12 +56,15 @@ typedef enum
 	HOOK_TYPE_CLIENT_VERIFY_X509,
 	HOOK_TYPE_CLIENT_LOGIN_FAILURE,
 	HOOK_TYPE_CLIENT_END_PAINT,
+	HOOK_TYPE_CLIENT_LOAD_CHANNELS,
 
 	HOOK_TYPE_SERVER_POST_CONNECT,
 	HOOK_TYPE_SERVER_ACTIVATE,
 	HOOK_TYPE_SERVER_CHANNELS_INIT,
 	HOOK_TYPE_SERVER_CHANNELS_FREE,
 	HOOK_TYPE_SERVER_SESSION_END,
+	HOOK_TYPE_SERVER_SESSION_INITIALIZE,
+	HOOK_TYPE_SERVER_SESSION_STARTED,
 
 	HOOK_LAST
 } PF_HOOK_TYPE;

@@ -22,17 +22,22 @@ set (CRT_FILES alignment.c
 	unicode.c
 	string.c)
 
-if (NOT WITH_ICU)
-	set (CRT_FILES ${CRT_FILES}
-		utf.c
-		utf.h)
-endif(NOT WITH_ICU)
-
-if (WITH_ICU)
-	find_package(ICU REQUIRED i18n uc io)
-	winpr_include_directory_add(${ICU_INCLUDE_DIRS})
-	winpr_library_add_private(${ICU_LIBRARIES})
-endif (WITH_ICU)
+if(WITH_UNICODE_BUILTIN)
+    list(APPEND CRT_FILES unicode_builtin.c)
+else()
+    IF (ANDROID)
+        list(APPEND CRT_FILES unicode_android.c)
+    elseif (NOT APPLE AND NOT WIN32)
+        find_package(ICU REQUIRED i18n uc io data)
+        list(APPEND CRT_FILES unicode_icu.c)
+        winpr_include_directory_add(${ICU_INCLUDE_DIRS})
+        winpr_library_add_private(${ICU_LIBRARIES})
+    elseif(APPLE)
+        list(APPEND CRT_FILES unicode_apple.m)
+        find_library(FOUNDATION_FRAMEWORK Foundation REQUIRED)
+        winpr_library_add_private(${FOUNDATION_FRAMEWORK})
+    endif()
+endif()
 
 winpr_module_add(${CRT_FILES})
 

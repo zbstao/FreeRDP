@@ -11,29 +11,19 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^arm*")
 	set(TARGET_ARCH "ARM")
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "sparc")
 	set(TARGET_ARCH "sparc")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "e2k")
+	set(TARGET_ARCH "e2k")
 endif()
 
-option(WITH_MANPAGES "Generate manpages." ON)
+if (NOT OPENBSD AND NOT WIN32)
+	set(MANPAGE_DEF ON)
+endif()
+option(WITH_MANPAGES "Generate manpages." ${MANPAGE_DEF})
 option(WITH_PROFILER "Compile profiler." OFF)
 option(WITH_GPROF "Compile with GProf profiler." OFF)
 
-if((TARGET_ARCH MATCHES "x86|x64") AND (NOT DEFINED WITH_SSE2))
-	option(WITH_SSE2 "Enable SSE2 optimization." ON)
-else()
-	option(WITH_SSE2 "Enable SSE2 optimization." OFF)
-endif()
-
-if(TARGET_ARCH MATCHES "ARM")
-	if (NOT DEFINED WITH_NEON)
-		option(WITH_NEON "Enable NEON optimization." ON)
-	else()
-		option(WITH_NEON "Enable NEON optimization." OFF)
-	endif()
-else()
-	if(NOT APPLE)
-		option(WITH_IPP "Use Intel Performance Primitives." OFF)
-	endif()
-endif()
+option(WITH_SSE2 "Enable SSE2 optimization." OFF)
+option(WITH_NEON "Enable NEON optimization." OFF)
 
 option(WITH_JPEG "Use JPEG decoding." OFF)
 
@@ -65,12 +55,13 @@ option(BUILD_TESTING "Build unit tests" OFF)
 CMAKE_DEPENDENT_OPTION(TESTS_WTSAPI_EXTRA "Build extra WTSAPI tests (interactive)" OFF "BUILD_TESTING" OFF)
 CMAKE_DEPENDENT_OPTION(BUILD_COMM_TESTS "Build comm related tests (require comm port)" OFF "BUILD_TESTING" OFF)
 
-option(WITH_SAMPLE "Build sample code" OFF)
+option(WITH_SAMPLE "Build sample code" ON)
 
 option(WITH_CLIENT_COMMON "Build client common library" ON)
 CMAKE_DEPENDENT_OPTION(WITH_CLIENT "Build client binaries" ON "WITH_CLIENT_COMMON" OFF)
+CMAKE_DEPENDENT_OPTION(WITH_CLIENT_SDL "[experimental] Build SDL client " ON "WITH_CLIENT" OFF)
 
-option(WITH_SERVER "Build server binaries" OFF)
+option(WITH_SERVER "Build server binaries" ON)
 
 option(WITH_CHANNELS "Build virtual channel plugins" ON)
 
@@ -88,15 +79,16 @@ endif()
 option(WITH_THIRD_PARTY "Build third-party components" OFF)
 
 option(WITH_CLIENT_INTERFACE "Build clients as a library with an interface" OFF)
+CMAKE_DEPENDENT_OPTION(CLIENT_INTERFACE_SHARED "Build clients as a shared library with an interface" OFF "WITH_CLIENT_INTERFACE" OFF)
 option(WITH_SERVER_INTERFACE "Build servers as a library with an interface" ON)
 
 option(WITH_DEBUG_ALL "Print all debug messages." OFF)
 
 if(WITH_DEBUG_ALL)
     message(WARNING "WITH_DEBUG_ALL=ON, the build will be slow and might leak sensitive information, do not use with release builds!")
-	set(DEFAULT_DEBUG_OPTION "ON")
+    set(DEFAULT_DEBUG_OPTION ON CACHE INTERNAL "debug default")
 else()
-	set(DEFAULT_DEBUG_OPTION "OFF")
+    set(DEFAULT_DEBUG_OPTION OFF CACHE INTERNAL "debug default")
 endif()
 
 option(WITH_DEBUG_CERTIFICATE "Print certificate related debug messages." ${DEFAULT_DEBUG_OPTION})
@@ -106,6 +98,7 @@ endif()
 option(WITH_DEBUG_CAPABILITIES "Print capability negotiation debug messages." ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_CHANNELS "Print channel manager debug messages." ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_CLIPRDR "Print clipboard redirection debug messages" ${DEFAULT_DEBUG_OPTION})
+option(WITH_DEBUG_CODECS "Print codec debug messages" ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_RDPGFX "Print RDPGFX debug messages" ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_DVC "Print dynamic virtual channel debug messages." ${DEFAULT_DEBUG_OPTION})
 CMAKE_DEPENDENT_OPTION(WITH_DEBUG_TSMF "Print TSMF virtual channel debug messages." ${DEFAULT_DEBUG_OPTION} "CHANNEL_TSMF" OFF)
@@ -138,7 +131,6 @@ option(WITH_DEBUG_SVC "Print static virtual channel debug messages." ${DEFAULT_D
 option(WITH_DEBUG_TRANSPORT "Print transport debug messages." ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_TIMEZONE "Print timezone debug messages." ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_WND "Print window order debug messages" ${DEFAULT_DEBUG_OPTION})
-option(WITH_DEBUG_X11_CLIPRDR "Print X11 clipboard redirection debug messages" ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_X11_LOCAL_MOVESIZE "Print X11 Client local movesize debug messages" ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_X11 "Print X11 Client debug messages" ${DEFAULT_DEBUG_OPTION})
 option(WITH_DEBUG_XV "Print XVideo debug messages" ${DEFAULT_DEBUG_OPTION})
@@ -149,15 +141,19 @@ option(WITH_CCACHE "Use ccache support if available" ON)
 option(WITH_CLANG_FORMAT "Detect clang-format. run 'cmake --build . --target clangformat' to format." ON)
 
 option(WITH_DSP_EXPERIMENTAL "Enable experimental sound encoder/decoder formats" OFF)
-if (WITH_FFMPEG)
-    option(WITH_DSP_FFMPEG "Use FFMPEG for audio encoding/decoding" OFF)
-    option(WITH_VAAPI "Use FFMPEG VAAPI" OFF)
-endif(WITH_FFMPEG)
 
-option(USE_VERSION_FROM_GIT_TAG "Extract FreeRDP version from git tag." OFF)
+option(WITH_FFMPEG "Enable FFMPEG for audio/video encoding/decoding" ON)
+CMAKE_DEPENDENT_OPTION(WITH_DSP_FFMPEG "Use FFMPEG for audio encoding/decoding" ON
+	"WITH_FFMPEG" OFF)
+CMAKE_DEPENDENT_OPTION(WITH_VIDEO_FFMPEG "Use FFMPEG for video encoding/decoding" ON
+	"WITH_FFMPEG" OFF)
+CMAKE_DEPENDENT_OPTION(WITH_VAAPI "Use FFMPEG VAAPI" OFF
+	"WITH_VIDEO_FFMPEG" OFF)
+
+option(USE_VERSION_FROM_GIT_TAG "Extract FreeRDP version from git tag." ON)
 
 option(WITH_CAIRO    "Use CAIRO image library for screen resizing" OFF)
-option(WITH_SWSCALE  "Use SWScale image library for screen resizing" OFF)
+option(WITH_SWSCALE  "Use SWScale image library for screen resizing" ON)
 
 if (ANDROID)
 	include(ConfigOptionsAndroid)
@@ -167,11 +163,30 @@ if (IOS)
 	include(ConfigOptionsiOS)
 endif(IOS)
 
+if (UNIX AND NOT APPLE)
+    find_package(ALSA)
+    find_package(PulseAudio)
+    find_package(OSS)
+    option(WITH_ALSA "use alsa for sound" ${ALSA_FOUND})
+    option(WITH_PULSE "use alsa for sound" ${PULSE_FOUND})
+    option(WITH_OSS "use alsa for sound" ${OSS_FOUND})
+endif()
+
+if (OPENBSD)
+    find_package(SNDIO)
+    option(WITH_SNDIO "use SNDIO for sound" ${SNDIO_FOUND# OpenBSD
+endif()
+
+})
+endif()
+
 option(BUILD_FUZZERS "Use BUILD_FUZZERS to build fuzzing tests" OFF)
 
 if (BUILD_FUZZERS)
     if (NOT OSS_FUZZ)
-        add_compile_options(-fsanitize=fuzzer-no-link)
+        set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fsanitize=fuzzer-no-link")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=fuzzer-no-link")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -fsanitize=fuzzer-no-link")
     endif ()
 
     if (OSS_FUZZ AND NOT DEFINED ENV{LIB_FUZZING_ENGINE})
@@ -191,6 +206,11 @@ if (BUILD_FUZZERS)
     endif ()
 
     set(BUILD_TESTING ON)
+
+    if (BUILD_SHARED_LIBS STREQUAL "OFF")
+        set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+        set(CMAKE_CXX_FLAGS "-static ${CMAKE_CXX_FLAGS}")
+    endif()
 
     # A special target with fuzzer and sanitizer flags.
     add_library(fuzzer_config INTERFACE)
@@ -217,3 +237,5 @@ if (BUILD_FUZZERS)
             >
     )
 endif()
+
+option(WITH_FULL_CONFIG_PATH "Use <appdata>/Vendor/Product instead of <appdata>/product (lowercase, only if vendor equals product) as config directory" OFF)

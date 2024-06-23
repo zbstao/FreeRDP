@@ -22,6 +22,9 @@
 #include <freerdp/primitives.h>
 #include <freerdp/api.h>
 
+#include <freerdp/log.h>
+#define PRIM_TAG FREERDP_TAG("primitives")
+
 #ifdef __GNUC__
 #define PRIM_ALIGN_128 __attribute__((aligned(16)))
 #else
@@ -159,7 +162,7 @@ static INLINE BYTE* writePixelGenericAlpha(BYTE* dst, DWORD formatSize, UINT32 f
                                            BYTE G, BYTE B, BYTE A)
 {
 	UINT32 color = FreeRDPGetColor(format, R, G, B, A);
-	WriteColor(dst, format, color);
+	FreeRDPWriteColor(dst, format, color);
 	return dst + formatSize;
 }
 
@@ -167,7 +170,7 @@ static INLINE BYTE* writePixelGeneric(BYTE* dst, DWORD formatSize, UINT32 format
                                       BYTE B, BYTE A)
 {
 	UINT32 color = FreeRDPGetColor(format, R, G, B, A);
-	WriteColorIgnoreAlpha(dst, format, color);
+	FreeRDPWriteColorIgnoreAlpha(dst, format, color);
 	return dst + formatSize;
 }
 
@@ -207,6 +210,19 @@ static INLINE BYTE CLIP(INT64 X)
 		return 0L;
 
 	return (BYTE)X;
+}
+
+static INLINE BYTE CONDITIONAL_CLIP(INT32 in, BYTE original)
+{
+	BYTE out = CLIP(in);
+	BYTE diff;
+	if (out > original)
+		diff = out - original;
+	else
+		diff = original - out;
+	if (diff < 30)
+		return original;
+	return out;
 }
 
 /**
@@ -262,7 +278,6 @@ FREERDP_LOCAL void primitives_init_colors(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_YCoCg(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_YUV(primitives_t* prims);
 
-#if defined(WITH_SSE2) || defined(WITH_NEON)
 FREERDP_LOCAL void primitives_init_copy_opt(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_set_opt(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_add_opt(primitives_t* prims);
@@ -273,7 +288,6 @@ FREERDP_LOCAL void primitives_init_alphaComp_opt(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_colors_opt(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_YCoCg_opt(primitives_t* prims);
 FREERDP_LOCAL void primitives_init_YUV_opt(primitives_t* prims);
-#endif
 
 #if defined(WITH_OPENCL)
 FREERDP_LOCAL BOOL primitives_init_opencl(primitives_t* prims);

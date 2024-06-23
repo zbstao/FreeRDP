@@ -25,7 +25,20 @@
 #include <freerdp/api.h>
 #include <freerdp/codec/audio.h>
 
-FREERDP_API size_t server_audin_get_formats(AUDIO_FORMAT** dst_formats);
-FREERDP_API size_t server_rdpsnd_get_formats(AUDIO_FORMAT** dst_formats);
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+	FREERDP_API size_t server_audin_get_formats(AUDIO_FORMAT** dst_formats);
+	FREERDP_API size_t server_rdpsnd_get_formats(AUDIO_FORMAT** dst_formats);
+
+	FREERDP_API void freerdp_server_warn_unmaintained(int argc, char* argv[]);
+	FREERDP_API void freerdp_server_warn_experimental(int argc, char* argv[]);
+	FREERDP_API void freerdp_server_warn_deprecated(int argc, char* argv[]);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FREERDP_SERVER_COMMON_SERVER_H */

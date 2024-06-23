@@ -45,10 +45,12 @@ static UINT irp_free(IRP* irp)
 	if (!irp)
 		return CHANNEL_RC_OK;
 
-	Stream_Free(irp->input, TRUE);
-	Stream_Free(irp->output, TRUE);
+	if (irp->input)
+		Stream_Release(irp->input);
+	if (irp->output)
+		Stream_Release(irp->output);
 
-	_aligned_free(irp);
+	winpr_aligned_free(irp);
 	return CHANNEL_RC_OK;
 }
 
@@ -59,11 +61,16 @@ static UINT irp_free(IRP* irp)
  */
 static UINT irp_complete(IRP* irp)
 {
-	size_t pos;
-	rdpdrPlugin* rdpdr;
-	UINT error;
+	size_t pos = 0;
+	rdpdrPlugin* rdpdr = NULL;
+	UINT error = 0;
+
+	WINPR_ASSERT(irp);
+	WINPR_ASSERT(irp->output);
+	WINPR_ASSERT(irp->devman);
 
 	rdpdr = (rdpdrPlugin*)irp->devman->plugin;
+	WINPR_ASSERT(rdpdr);
 
 	pos = Stream_GetPosition(irp->output);
 	Stream_SetPosition(irp->output, RDPDR_DEVICE_IO_RESPONSE_LENGTH - 4);
@@ -77,13 +84,17 @@ static UINT irp_complete(IRP* irp)
 	return error;
 }
 
-IRP* irp_new(DEVMAN* devman, wStream* s, UINT* error)
+IRP* irp_new(DEVMAN* devman, wStreamPool* pool, wStream* s, wLog* log, UINT* error)
 {
-	IRP* irp;
-	DEVICE* device;
-	UINT32 DeviceId;
+	IRP* irp = NULL;
+	DEVICE* device = NULL;
+	UINT32 DeviceId = 0;
 
-	if (Stream_GetRemainingLength(s) < 20)
+	WINPR_ASSERT(devman);
+	WINPR_ASSERT(pool);
+	WINPR_ASSERT(s);
+
+	if (!Stream_CheckAndLogRequiredLengthWLog(log, s, 20))
 	{
 		if (error)
 			*error = ERROR_INVALID_DATA;
@@ -95,18 +106,17 @@ IRP* irp_new(DEVMAN* devman, wStream* s, UINT* error)
 
 	if (!device)
 	{
-		WLog_WARN(TAG, "devman_get_device_by_id failed!");
 		if (error)
-			*error = CHANNEL_RC_OK;
+			*error = ERROR_DEV_NOT_EXIST;
 
 		return NULL;
 	}
 
-	irp = (IRP*)_aligned_malloc(sizeof(IRP), MEMORY_ALLOCATION_ALIGNMENT);
+	irp = (IRP*)winpr_aligned_malloc(sizeof(IRP), MEMORY_ALLOCATION_ALIGNMENT);
 
 	if (!irp)
 	{
-		WLog_ERR(TAG, "_aligned_malloc failed!");
+		WLog_Print(log, WLOG_ERROR, "_aligned_malloc failed!");
 		if (error)
 			*error = CHANNEL_RC_NO_MEMORY;
 		return NULL;
@@ -114,20 +124,21 @@ IRP* irp_new(DEVMAN* devman, wStream* s, UINT* error)
 
 	ZeroMemory(irp, sizeof(IRP));
 
-	irp->input = s;
-	irp->device = device;
-	irp->devman = devman;
-
 	Stream_Read_UINT32(s, irp->FileId);        /* FileId (4 bytes) */
 	Stream_Read_UINT32(s, irp->CompletionId);  /* CompletionId (4 bytes) */
 	Stream_Read_UINT32(s, irp->MajorFunction); /* MajorFunction (4 bytes) */
 	Stream_Read_UINT32(s, irp->MinorFunction); /* MinorFunction (4 bytes) */
 
-	irp->output = Stream_New(NULL, 256);
+	Stream_AddRef(s);
+	irp->input = s;
+	irp->device = device;
+	irp->devman = devman;
+
+	irp->output = StreamPool_Take(pool, 256);
 	if (!irp->output)
 	{
-		WLog_ERR(TAG, "Stream_New failed!");
-		_aligned_free(irp);
+		WLog_Print(log, WLOG_ERROR, "Stream_New failed!");
+		irp_free(irp);
 		if (error)
 			*error = CHANNEL_RC_NO_MEMORY;
 		return NULL;
@@ -135,8 +146,7 @@ IRP* irp_new(DEVMAN* devman, wStream* s, UINT* error)
 
 	if (!rdpdr_write_iocompletion_header(irp->output, DeviceId, irp->CompletionId, 0))
 	{
-		Stream_Free(irp->output, TRUE);
-		_aligned_free(irp);
+		irp_free(irp);
 		if (error)
 			*error = CHANNEL_RC_NO_MEMORY;
 		return NULL;

@@ -30,6 +30,10 @@
 
 #include "../log.h"
 
+#include <winternl.h>
+
+#pragma comment(lib, "ntdll.lib")
+
 #define WTSAPI_CHANNEL_MAGIC 0x44484356
 #define TAG WINPR_TAG("wtsapi")
 
@@ -334,13 +338,11 @@ BOOL WINAPI Win32_WTSVirtualChannelRead_Static(WTSAPI_CHANNEL* pChannel, DWORD d
 	else if (pChannel->readSync)
 	{
 		BOOL bSuccess;
-		OVERLAPPED overlapped;
+		OVERLAPPED overlapped = { 0 };
 		DWORD numBytesRead = 0;
 		DWORD numBytesToRead = 0;
 
 		*lpNumberOfBytesTransferred = 0;
-
-		ZeroMemory(&overlapped, sizeof(OVERLAPPED));
 
 		numBytesToRead = nNumberOfBytesToRead;
 
@@ -454,13 +456,11 @@ BOOL WINAPI Win32_WTSVirtualChannelRead_Dynamic(WTSAPI_CHANNEL* pChannel, DWORD 
 	if (pChannel->readSync)
 	{
 		BOOL bSuccess;
-		OVERLAPPED overlapped;
+		OVERLAPPED overlapped = { 0 };
 		DWORD numBytesRead = 0;
 		DWORD numBytesToRead = 0;
 
 		*lpNumberOfBytesTransferred = 0;
-
-		ZeroMemory(&overlapped, sizeof(OVERLAPPED));
 
 		numBytesToRead = nNumberOfBytesToRead;
 
@@ -581,9 +581,7 @@ BOOL WINAPI Win32_WTSVirtualChannelRead(HANDLE hChannel, DWORD dwMilliseconds, L
 
 	if (!pChannel->waitObjectMode)
 	{
-		OVERLAPPED overlapped;
-
-		ZeroMemory(&overlapped, sizeof(OVERLAPPED));
+		OVERLAPPED overlapped = { 0 };
 
 		if (ReadFile(pChannel->hFile, lpBuffer, nNumberOfBytesToRead, lpNumberOfBytesTransferred,
 		             &overlapped))
@@ -631,7 +629,7 @@ BOOL WINAPI Win32_WTSVirtualChannelWrite(HANDLE hChannel, LPCVOID lpBuffer,
                                          DWORD nNumberOfBytesToWrite,
                                          LPDWORD lpNumberOfBytesTransferred)
 {
-	OVERLAPPED overlapped;
+	OVERLAPPED overlapped = { 0 };
 	WTSAPI_CHANNEL* pChannel = (WTSAPI_CHANNEL*)hChannel;
 
 	if (!pChannel || (pChannel->magic != WTSAPI_CHANNEL_MAGIC))
@@ -639,8 +637,6 @@ BOOL WINAPI Win32_WTSVirtualChannelWrite(HANDLE hChannel, LPCVOID lpBuffer,
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
 	}
-
-	ZeroMemory(&overlapped, sizeof(OVERLAPPED));
 
 	if (WriteFile(pChannel->hFile, lpBuffer, nNumberOfBytesToWrite, lpNumberOfBytesTransferred,
 	              &overlapped))
@@ -670,11 +666,11 @@ BOOL Win32_WTSVirtualChannelPurge_Internal(HANDLE hChannelHandle, ULONG IoContro
 	}
 
 	ntstatus =
-	    _NtDeviceIoControlFile(pChannel->hFile, 0, 0, 0, &ioStatusBlock, IoControlCode, 0, 0, 0, 0);
+	    NtDeviceIoControlFile(pChannel->hFile, 0, 0, 0, &ioStatusBlock, IoControlCode, 0, 0, 0, 0);
 
 	if (ntstatus == STATUS_PENDING)
 	{
-		ntstatus = _NtWaitForSingleObject(pChannel->hFile, 0, 0);
+		ntstatus = NtWaitForSingleObject(pChannel->hFile, 0, 0);
 
 		if (ntstatus >= 0)
 			ntstatus = ioStatusBlock.Status;
@@ -683,14 +679,14 @@ BOOL Win32_WTSVirtualChannelPurge_Internal(HANDLE hChannelHandle, ULONG IoContro
 	if (ntstatus == STATUS_BUFFER_OVERFLOW)
 	{
 		ntstatus = STATUS_BUFFER_TOO_SMALL;
-		error = _RtlNtStatusToDosError(ntstatus);
+		error = RtlNtStatusToDosError(ntstatus);
 		SetLastError(error);
 		return FALSE;
 	}
 
 	if (ntstatus < 0)
 	{
-		error = _RtlNtStatusToDosError(ntstatus);
+		error = RtlNtStatusToDosError(ntstatus);
 		SetLastError(error);
 		return FALSE;
 	}

@@ -26,7 +26,7 @@
 #include <wayland-client.h>
 #include <stdbool.h>
 
-#if __GNUC__ >= 4
+#if defined(__GNUC__) && (__GNUC__ >= 4)
 #define UWAC_API __attribute__((visibility("default")))
 #else
 #define UWAC_API
@@ -261,6 +261,7 @@ struct uwac_key_event
 	uint32_t raw_key;
 	uint32_t sym;
 	bool pressed;
+	bool repeated;
 };
 typedef struct uwac_key_event UwacKeyEvent;
 
@@ -294,7 +295,8 @@ struct uwac_output_geometry_event
 };
 typedef struct uwac_output_geometry_event UwacOutputGeometryEvent;
 
-union uwac_event {
+union uwac_event
+{
 	int type;
 	UwacOutputNewEvent output_new;
 	UwacOutputGeometryEvent output_geometry;

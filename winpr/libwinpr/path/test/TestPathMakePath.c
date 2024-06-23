@@ -8,12 +8,11 @@
 
 int TestPathMakePath(int argc, char* argv[])
 {
-	int x;
-	size_t baseLen;
-	BOOL success;
-	char tmp[64];
-	char* path;
-	char* cur;
+	size_t baseLen = 0;
+	BOOL success = 0;
+	char tmp[64] = { 0 };
+	char* path = NULL;
+	char* cur = NULL;
 	char delim = PathGetSeparatorA(0);
 	char* base = GetKnownPath(KNOWN_PATH_TEMP);
 
@@ -29,7 +28,7 @@ int TestPathMakePath(int argc, char* argv[])
 	baseLen = strlen(base);
 	srand(time(NULL));
 
-	for (x = 0; x < 5; x++)
+	for (int x = 0; x < 5; x++)
 	{
 		sprintf_s(tmp, ARRAYSIZE(tmp), "%08X", rand());
 		path = GetCombinedPath(base, tmp);
@@ -79,6 +78,6 @@ int TestPathMakePath(int argc, char* argv[])
 	}
 
 	free(path);
-	printf("%s success!\n", __FUNCTION__);
+	printf("%s success!\n", __func__);
 	return 0;
 }

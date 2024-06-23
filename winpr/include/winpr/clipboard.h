@@ -62,6 +62,8 @@ struct s_wClipboardDelegate
 	(wClipboardDelegate*, const wClipboardFileRangeRequest*, const BYTE* data, UINT32 size);
 	UINT(*ClipboardFileRangeFailure)
 	(wClipboardDelegate*, const wClipboardFileRangeRequest*, UINT errorCode);
+
+	BOOL (*IsFileNameComponentValid)(LPCWSTR lpFileName);
 };
 
 #ifdef __cplusplus
@@ -97,6 +99,8 @@ extern "C"
 
 	WINPR_API wClipboard* ClipboardCreate(void);
 	WINPR_API void ClipboardDestroy(wClipboard* clipboard);
+
+	WINPR_API const char* ClipboardGetFormatIdString(UINT32 formatId);
 
 #ifdef __cplusplus
 }

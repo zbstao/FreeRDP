@@ -31,7 +31,9 @@
 
 #include "xf_window.h"
 #include "xf_rail.h"
+#include "xf_utils.h"
 
+#include <freerdp/log.h>
 #define TAG CLIENT_TAG("x11")
 
 static const char* error_code_names[] = { "RAIL_EXEC_S_OK",
@@ -66,6 +68,12 @@ struct xf_rail_icon_cache
 	xfRailIcon scratch;
 };
 
+typedef struct
+{
+	xfContext* xfc;
+	const RECTANGLE_16* rect;
+} rail_paint_fn_arg_t;
+
 void xf_rail_enable_remoteapp_mode(xfContext* xfc)
 {
 	if (!xfc->remote_app)
@@ -84,22 +92,20 @@ void xf_rail_disable_remoteapp_mode(xfContext* xfc)
 		xfc->remote_app = FALSE;
 		xf_DestroyDummyWindow(xfc, xfc->drawable);
 		xf_create_window(xfc);
+		xf_create_image(xfc);
 	}
 }
 
 void xf_rail_send_activate(xfContext* xfc, Window xwindow, BOOL enabled)
 {
-	xfAppWindow* appWindow;
 	RAIL_ACTIVATE_ORDER activate;
-	appWindow = xf_AppWindowFromX11Window(xfc, xwindow);
+	xfAppWindow* appWindow = xf_AppWindowFromX11Window(xfc, xwindow);
 
 	if (!appWindow)
 		return;
 
 	if (enabled)
 		xf_SetWindowStyle(xfc, appWindow, appWindow->dwStyle, appWindow->dwExStyle);
-	else
-		xf_SetWindowStyle(xfc, appWindow, 0, 0);
 
 	activate.windowId = appWindow->windowId;
 	activate.enabled = enabled;
@@ -137,46 +143,54 @@ void xf_rail_adjust_position(xfContext* xfc, xfAppWindow* appWindow)
 		 * Calculate new size/position for the rail window(new values for
 		 * windowOffsetX/windowOffsetY/windowWidth/windowHeight) on the server
 		 */
-		windowMove.left = appWindow->x;
-		windowMove.top = appWindow->y;
-		windowMove.right = windowMove.left + appWindow->width;
-		windowMove.bottom = windowMove.top + appWindow->height;
+		windowMove.left = appWindow->x - appWindow->resizeMarginLeft;
+		windowMove.top = appWindow->y - appWindow->resizeMarginTop;
+		windowMove.right = appWindow->x + appWindow->width + appWindow->resizeMarginRight;
+		windowMove.bottom = appWindow->y + appWindow->height + appWindow->resizeMarginBottom;
 		xfc->rail->ClientWindowMove(xfc->rail, &windowMove);
 	}
 }
 
 void xf_rail_end_local_move(xfContext* xfc, xfAppWindow* appWindow)
 {
-	int x, y;
-	int child_x;
-	int child_y;
-	unsigned int mask;
-	Window root_window;
-	Window child_window;
-	RAIL_WINDOW_MOVE_ORDER windowMove;
-	rdpInput* input;
+	int x = 0;
+	int y = 0;
+	int child_x = 0;
+	int child_y = 0;
+	unsigned int mask = 0;
+	Window root_window = 0;
+	Window child_window = 0;
+	rdpInput* input = NULL;
 
 	WINPR_ASSERT(xfc);
 
 	input = xfc->common.context.input;
 	WINPR_ASSERT(input);
 
-	/*
-	 * For keyboard moves send and explicit update to RDP server
-	 */
-	windowMove.windowId = appWindow->windowId;
-	/*
-	 * Calculate new size/position for the rail window(new values for
-	 * windowOffsetX/windowOffsetY/windowWidth/windowHeight) on the server
-	 *
-	 */
-	windowMove.left = appWindow->x;
-	windowMove.top = appWindow->y;
-	windowMove.right =
-	    windowMove.left +
-	    appWindow->width; /* In the update to RDP the position is one past the window */
-	windowMove.bottom = windowMove.top + appWindow->height;
-	xfc->rail->ClientWindowMove(xfc->rail, &windowMove);
+	if ((appWindow->local_move.direction == _NET_WM_MOVERESIZE_MOVE_KEYBOARD) ||
+	    (appWindow->local_move.direction == _NET_WM_MOVERESIZE_SIZE_KEYBOARD))
+	{
+		RAIL_WINDOW_MOVE_ORDER windowMove;
+
+		/*
+		 * For keyboard moves send and explicit update to RDP server
+		 */
+		windowMove.windowId = appWindow->windowId;
+		/*
+		 * Calculate new size/position for the rail window(new values for
+		 * windowOffsetX/windowOffsetY/windowWidth/windowHeight) on the server
+		 *
+		 */
+		windowMove.left = appWindow->x - appWindow->resizeMarginLeft;
+		windowMove.top = appWindow->y - appWindow->resizeMarginTop;
+		windowMove.right =
+		    appWindow->x + appWindow->width +
+		    appWindow
+		        ->resizeMarginRight; /* In the update to RDP the position is one past the window */
+		windowMove.bottom = appWindow->y + appWindow->height + appWindow->resizeMarginBottom;
+		xfc->rail->ClientWindowMove(xfc->rail, &windowMove);
+	}
+
 	/*
 	 * Simulate button up at new position to end the local move (per RDP spec)
 	 */
@@ -202,63 +216,61 @@ void xf_rail_end_local_move(xfContext* xfc, xfAppWindow* appWindow)
 	appWindow->local_move.state = LMS_TERMINATING;
 }
 
-static void xf_rail_invalidate_region(xfContext* xfc, REGION16* invalidRegion)
+BOOL xf_rail_paint_surface(xfContext* xfc, UINT64 windowId, const RECTANGLE_16* rect)
 {
-	int index;
-	int count = 0;
-	RECTANGLE_16 updateRect;
-	RECTANGLE_16 windowRect;
-	ULONG_PTR* pKeys = NULL;
-	xfAppWindow* appWindow;
-	const RECTANGLE_16* extents;
-	REGION16 windowInvalidRegion;
+	xfAppWindow* appWindow = xf_rail_get_window(xfc, windowId);
+
+	WINPR_ASSERT(rect);
+
+	if (!appWindow)
+		return FALSE;
+
+	const RECTANGLE_16 windowRect = { .left = MAX(appWindow->x, 0),
+		                              .top = MAX(appWindow->y, 0),
+		                              .right = MAX(appWindow->x + appWindow->width, 0),
+		                              .bottom = MAX(appWindow->y + appWindow->height, 0) };
+
+	REGION16 windowInvalidRegion = { 0 };
 	region16_init(&windowInvalidRegion);
-	if (xfc->railWindows)
-		count = HashTable_GetKeys(xfc->railWindows, &pKeys);
+	region16_union_rect(&windowInvalidRegion, &windowInvalidRegion, &windowRect);
+	region16_intersect_rect(&windowInvalidRegion, &windowInvalidRegion, rect);
 
-	for (index = 0; index < count; index++)
+	if (!region16_is_empty(&windowInvalidRegion))
 	{
-		appWindow = xf_rail_get_window(xfc, *(UINT64*)pKeys[index]);
+		const RECTANGLE_16* extents = region16_extents(&windowInvalidRegion);
+		const RECTANGLE_16 updateRect = { .left = extents->left - appWindow->x,
+			                              .top = extents->top - appWindow->y,
+			                              .right = extents->right - appWindow->x,
+			                              .bottom = extents->bottom - appWindow->y };
 
-		if (appWindow)
-		{
-			windowRect.left = MAX(appWindow->x, 0);
-			windowRect.top = MAX(appWindow->y, 0);
-			windowRect.right = MAX(appWindow->x + appWindow->width, 0);
-			windowRect.bottom = MAX(appWindow->y + appWindow->height, 0);
-			region16_clear(&windowInvalidRegion);
-			region16_intersect_rect(&windowInvalidRegion, invalidRegion, &windowRect);
-
-			if (!region16_is_empty(&windowInvalidRegion))
-			{
-				extents = region16_extents(&windowInvalidRegion);
-				updateRect.left = extents->left - appWindow->x;
-				updateRect.top = extents->top - appWindow->y;
-				updateRect.right = extents->right - appWindow->x;
-				updateRect.bottom = extents->bottom - appWindow->y;
-				xf_UpdateWindowArea(xfc, appWindow, updateRect.left, updateRect.top,
-				                    updateRect.right - updateRect.left,
-				                    updateRect.bottom - updateRect.top);
-			}
-		}
+		xf_UpdateWindowArea(xfc, appWindow, updateRect.left, updateRect.top,
+		                    updateRect.right - updateRect.left, updateRect.bottom - updateRect.top);
 	}
-
-	free(pKeys);
 	region16_uninit(&windowInvalidRegion);
+	return TRUE;
 }
 
-void xf_rail_paint(xfContext* xfc, INT32 uleft, INT32 utop, UINT32 uright, UINT32 ubottom)
+static BOOL rail_paint_fn(const void* pvkey, void* value, void* pvarg)
 {
-	REGION16 invalidRegion;
-	RECTANGLE_16 invalidRect;
-	invalidRect.left = uleft;
-	invalidRect.top = utop;
-	invalidRect.right = uright;
-	invalidRect.bottom = ubottom;
-	region16_init(&invalidRegion);
-	region16_union_rect(&invalidRegion, &invalidRegion, &invalidRect);
-	xf_rail_invalidate_region(xfc, &invalidRegion);
-	region16_uninit(&invalidRegion);
+	rail_paint_fn_arg_t* arg = pvarg;
+	WINPR_ASSERT(pvkey);
+	WINPR_ASSERT(arg);
+
+	const UINT64 key = *(const UINT64*)pvkey;
+	return xf_rail_paint_surface(arg->xfc, key, arg->rect);
+}
+
+BOOL xf_rail_paint(xfContext* xfc, const RECTANGLE_16* rect)
+{
+	rail_paint_fn_arg_t arg = { .xfc = xfc, .rect = rect };
+
+	WINPR_ASSERT(xfc);
+	WINPR_ASSERT(rect);
+
+	if (!xfc->railWindows)
+		return TRUE;
+
+	return HashTable_Foreach(xfc->railWindows, rail_paint_fn, &arg);
 }
 
 /* RemoteApp Core Protocol Extension */
@@ -288,8 +300,14 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 		/* Ensure window always gets a window title */
 		if (fieldFlags & WINDOW_ORDER_FIELD_TITLE)
 		{
+			union
+			{
+				WCHAR* wc;
+				BYTE* b;
+			} cnv;
 			char* title = NULL;
 
+			cnv.b = windowState->titleInfo.string;
 			if (windowState->titleInfo.length == 0)
 			{
 				if (!(title = _strdup("")))
@@ -298,9 +316,8 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 					/* error handled below */
 				}
 			}
-			else if (ConvertFromUnicode(CP_UTF8, 0, (WCHAR*)windowState->titleInfo.string,
-			                            windowState->titleInfo.length / 2, &title, 0, NULL,
-			                            NULL) < 1)
+			else if (!(title = ConvertWCharNToUtf8Alloc(
+			               cnv.wc, windowState->titleInfo.length / sizeof(WCHAR), NULL)))
 			{
 				WLog_ERR(TAG, "failed to convert window title");
 				/* error handled below */
@@ -352,6 +369,18 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 		appWindow->windowHeight = windowState->windowHeight;
 	}
 
+	if (fieldFlags & WINDOW_ORDER_FIELD_RESIZE_MARGIN_X)
+	{
+		appWindow->resizeMarginLeft = windowState->resizeMarginLeft;
+		appWindow->resizeMarginRight = windowState->resizeMarginRight;
+	}
+
+	if (fieldFlags & WINDOW_ORDER_FIELD_RESIZE_MARGIN_Y)
+	{
+		appWindow->resizeMarginTop = windowState->resizeMarginTop;
+		appWindow->resizeMarginBottom = windowState->resizeMarginBottom;
+	}
+
 	if (fieldFlags & WINDOW_ORDER_FIELD_OWNER)
 	{
 		appWindow->ownerWindowId = windowState->ownerWindowId;
@@ -371,7 +400,13 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 	if (fieldFlags & WINDOW_ORDER_FIELD_TITLE)
 	{
 		char* title = NULL;
+		union
+		{
+			WCHAR* wc;
+			BYTE* b;
+		} cnv;
 
+		cnv.b = windowState->titleInfo.string;
 		if (windowState->titleInfo.length == 0)
 		{
 			if (!(title = _strdup("")))
@@ -380,8 +415,8 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 				return FALSE;
 			}
 		}
-		else if (ConvertFromUnicode(CP_UTF8, 0, (WCHAR*)windowState->titleInfo.string,
-		                            windowState->titleInfo.length / 2, &title, 0, NULL, NULL) < 1)
+		else if (!(title = ConvertWCharNToUtf8Alloc(
+		               cnv.wc, windowState->titleInfo.length / sizeof(WCHAR), NULL)))
 		{
 			WLog_ERR(TAG, "failed to convert window title");
 			return FALSE;
@@ -513,6 +548,13 @@ static BOOL xf_rail_window_common(rdpContext* context, const WINDOW_ORDER_INFO* 
 			                            visibilityRectsOffsetY, appWindow->visibilityRects,
 			                            appWindow->numVisibilityRects);
 		}
+
+		if (appWindow->rail_state == WINDOW_SHOW_MAXIMIZED)
+		{
+			xf_SendClientEvent(xfc, appWindow->handle, xfc->_NET_WM_STATE, 4, _NET_WM_STATE_ADD,
+			                   xfc->_NET_WM_STATE_MAXIMIZED_VERT, xfc->_NET_WM_STATE_MAXIMIZED_HORZ,
+			                   0, 0);
+		}
 	}
 
 	/* We should only be using the visibility rects for shaping the window */
@@ -531,20 +573,21 @@ static BOOL xf_rail_window_delete(rdpContext* context, const WINDOW_ORDER_INFO* 
 
 static xfRailIconCache* RailIconCache_New(rdpSettings* settings)
 {
-	xfRailIconCache* cache;
+	xfRailIconCache* cache = NULL;
 	cache = calloc(1, sizeof(xfRailIconCache));
 
 	if (!cache)
 		return NULL;
 
-	cache->numCaches = settings->RemoteAppNumIconCaches;
-	cache->numCacheEntries = settings->RemoteAppNumIconCacheEntries;
-	cache->entries = calloc(cache->numCaches * cache->numCacheEntries * 1ULL, sizeof(xfRailIcon));
+	cache->numCaches = freerdp_settings_get_uint32(settings, FreeRDP_RemoteAppNumIconCaches);
+	cache->numCacheEntries =
+	    freerdp_settings_get_uint32(settings, FreeRDP_RemoteAppNumIconCacheEntries);
+	cache->entries = calloc(1ull * cache->numCaches * cache->numCacheEntries, sizeof(xfRailIcon));
 
 	if (!cache->entries)
 	{
-		WLog_ERR(TAG, "failed to allocate icon cache %d x %d entries", cache->numCaches,
-		         cache->numCacheEntries);
+		WLog_ERR(TAG, "failed to allocate icon cache %" PRIu32 " x %" PRIu32 " entries",
+		         cache->numCaches, cache->numCacheEntries);
 		free(cache);
 		return NULL;
 	}
@@ -554,11 +597,9 @@ static xfRailIconCache* RailIconCache_New(rdpSettings* settings)
 
 static void RailIconCache_Free(xfRailIconCache* cache)
 {
-	UINT32 i;
-
 	if (cache)
 	{
-		for (i = 0; i < cache->numCaches * cache->numCacheEntries; i++)
+		for (UINT32 i = 0; i < cache->numCaches * cache->numCacheEntries; i++)
 		{
 			free(cache->entries[i].data);
 		}
@@ -605,11 +646,10 @@ static xfRailIcon* RailIconCache_Lookup(xfRailIconCache* cache, UINT8 cacheId, U
 static BOOL convert_rail_icon(const ICON_INFO* iconInfo, xfRailIcon* railIcon)
 {
 	BYTE* argbPixels = NULL;
-	BYTE* nextPixel;
-	long* pixels;
-	int i;
-	int nelements;
-	argbPixels = calloc(iconInfo->width * iconInfo->height * 1ULL, 4);
+	BYTE* nextPixel = NULL;
+	long* pixels = NULL;
+	int nelements = 0;
+	argbPixels = calloc(1ull * iconInfo->width * iconInfo->height, 4);
 
 	if (!argbPixels)
 		goto error;
@@ -632,9 +672,9 @@ static BOOL convert_rail_icon(const ICON_INFO* iconInfo, xfRailIcon* railIcon)
 	pixels[1] = iconInfo->height;
 	nextPixel = argbPixels;
 
-	for (i = 2; i < nelements; i++)
+	for (int i = 2; i < nelements; i++)
 	{
-		pixels[i] = ReadColor(nextPixel, PIXEL_FORMAT_BGRA32);
+		pixels[i] = FreeRDPReadColor(nextPixel, PIXEL_FORMAT_BGRA32);
 		nextPixel += 4;
 	}
 
@@ -648,9 +688,11 @@ error:
 static void xf_rail_set_window_icon(xfContext* xfc, xfAppWindow* railWindow, xfRailIcon* icon,
                                     BOOL replace)
 {
-	XChangeProperty(xfc->display, railWindow->handle, xfc->_NET_WM_ICON, XA_CARDINAL, 32,
-	                replace ? PropModeReplace : PropModeAppend, (unsigned char*)icon->data,
-	                icon->length);
+	WINPR_ASSERT(xfc);
+
+	LogTagAndXChangeProperty(TAG, xfc->display, railWindow->handle, xfc->_NET_WM_ICON, XA_CARDINAL,
+	                         32, replace ? PropModeReplace : PropModeAppend,
+	                         (unsigned char*)icon->data, icon->length);
 	XFlush(xfc->display);
 }
 
@@ -658,9 +700,9 @@ static BOOL xf_rail_window_icon(rdpContext* context, const WINDOW_ORDER_INFO* or
                                 const WINDOW_ICON_ORDER* windowIcon)
 {
 	xfContext* xfc = (xfContext*)context;
-	xfAppWindow* railWindow;
-	xfRailIcon* icon;
-	BOOL replaceIcon;
+	xfAppWindow* railWindow = NULL;
+	xfRailIcon* icon = NULL;
+	BOOL replaceIcon = 0;
 	railWindow = xf_rail_get_window(xfc, orderInfo->windowId);
 
 	if (!railWindow)
@@ -691,9 +733,9 @@ static BOOL xf_rail_window_cached_icon(rdpContext* context, const WINDOW_ORDER_I
                                        const WINDOW_CACHED_ICON_ORDER* windowCachedIcon)
 {
 	xfContext* xfc = (xfContext*)context;
-	xfAppWindow* railWindow;
-	xfRailIcon* icon;
-	BOOL replaceIcon;
+	xfAppWindow* railWindow = NULL;
+	xfRailIcon* icon = NULL;
+	BOOL replaceIcon = 0;
 	railWindow = xf_rail_get_window(xfc, orderInfo->windowId);
 
 	if (!railWindow)
@@ -799,7 +841,7 @@ static void xf_rail_register_update_callbacks(rdpUpdate* update)
 static UINT xf_rail_server_execute_result(RailClientContext* context,
                                           const RAIL_EXEC_RESULT_ORDER* execResult)
 {
-	xfContext* xfc;
+	xfContext* xfc = NULL;
 
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(execResult);
@@ -811,7 +853,7 @@ static UINT xf_rail_server_execute_result(RailClientContext* context,
 	{
 		WLog_ERR(TAG, "RAIL exec error: execResult=%s NtError=0x%X\n",
 		         error_code_names[execResult->execResult], execResult->rawResult);
-		freerdp_abort_connect(xfc->common.context.instance);
+		freerdp_abort_connect_context(&xfc->common.context);
 	}
 	else
 	{
@@ -863,9 +905,10 @@ static UINT xf_rail_server_handshake_ex(RailClientContext* context,
 static UINT xf_rail_server_local_move_size(RailClientContext* context,
                                            const RAIL_LOCALMOVESIZE_ORDER* localMoveSize)
 {
-	int x = 0, y = 0;
+	int x = 0;
+	int y = 0;
 	int direction = 0;
-	Window child_window;
+	Window child_window = 0;
 	xfContext* xfc = (xfContext*)context->custom;
 	xfAppWindow* appWindow = xf_rail_get_window(xfc, localMoveSize->windowId);
 
@@ -1095,7 +1138,7 @@ int xf_rail_uninit(xfContext* xfc, RailClientContext* rail)
 xfAppWindow* xf_rail_add_window(xfContext* xfc, UINT64 id, UINT32 x, UINT32 y, UINT32 width,
                                 UINT32 height, UINT32 surfaceId)
 {
-	xfAppWindow* appWindow;
+	xfAppWindow* appWindow = NULL;
 
 	if (!xfc)
 		return NULL;
@@ -1112,13 +1155,15 @@ xfAppWindow* xf_rail_add_window(xfContext* xfc, UINT64 id, UINT32 x, UINT32 y, U
 	appWindow->y = y;
 	appWindow->width = width;
 	appWindow->height = height;
-	xf_AppWindowCreate(xfc, appWindow);
+
+	if (!xf_AppWindowCreate(xfc, appWindow))
+		goto fail;
 	if (!HashTable_Insert(xfc->railWindows, &appWindow->windowId, (void*)appWindow))
-	{
-		rail_window_free(appWindow);
-		return NULL;
-	}
+		goto fail;
 	return appWindow;
+fail:
+	rail_window_free(appWindow);
+	return NULL;
 }
 
 BOOL xf_rail_del_window(xfContext* xfc, UINT64 id)

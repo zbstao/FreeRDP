@@ -26,6 +26,7 @@
 
 #include <winpr/cmdline.h>
 
+#include <freerdp/freerdp.h>
 #include <freerdp/channels/rdpsnd.h>
 
 #include "audin_main.h"
@@ -308,7 +309,8 @@ static UINT audin_sndio_parse_addin_args(AudinSndioDevice* device, ADDIN_ARGV* a
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-UINT sndio_freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints)
+FREERDP_ENTRY_POINT(UINT sndio_freerdp_audin_client_subsystem_entry(
+    PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints))
 {
 	ADDIN_ARGV* args;
 	AudinSndioDevice* sndio;

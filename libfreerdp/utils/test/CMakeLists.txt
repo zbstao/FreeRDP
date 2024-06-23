@@ -5,7 +5,10 @@ set(MODULE_PREFIX "TEST_FREERDP_UTILS")
 set(${MODULE_PREFIX}_DRIVER ${MODULE_NAME}.c)
 
 set(${MODULE_PREFIX}_TESTS
-	TestRingBuffer.c)
+	TestRingBuffer.c
+	TestPodArrays.c
+	TestEncodedTypes.c
+)
 
 create_test_sourcelist(${MODULE_PREFIX}_SRCS
 	${${MODULE_PREFIX}_DRIVER}
@@ -13,7 +16,10 @@ create_test_sourcelist(${MODULE_PREFIX}_SRCS
 
 add_executable(${MODULE_NAME} ${${MODULE_PREFIX}_SRCS})
 
-target_link_libraries(${MODULE_NAME} freerdp)
+target_link_libraries(${MODULE_NAME} PRIVATE freerdp winpr)
+if (NOT WIN32)
+    target_link_libraries(${MODULE_NAME} PRIVATE m)
+endif()
 
 set_target_properties(${MODULE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${TESTING_OUTPUT_DIRECTORY}")
 

@@ -25,8 +25,11 @@ freerdp_module_add(
 	pointer.h
 	bitmap.c
 	bitmap.h
+	persistent.c
 	nine_grid.c
+	nine_grid.h
 	offscreen.c
+	offscreen.h
 	palette.c
 	palette.h
 	glyph.c

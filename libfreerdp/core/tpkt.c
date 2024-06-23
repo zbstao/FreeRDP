@@ -60,53 +60,51 @@
  */
 
 /**
- * Verify if a packet has valid TPKT header.\n
- * @param s
- * @return BOOL
+ * Verify if a packet has valid TPKT header.
+ *
+ * @param s A stream to read from
+ *
+ * @return \b TRUE for success, \b FALSE otherwise
  */
 
-BOOL tpkt_verify_header(wStream* s)
+int tpkt_verify_header(wStream* s)
 {
-	BYTE version;
+	BYTE version = 0;
+
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 1))
+		return -1;
 
 	Stream_Peek_UINT8(s, version);
 
 	if (version == 3)
-		return TRUE;
+		return 1;
 	else
-		return FALSE;
+		return 0;
 }
 
 /**
- * Read a TPKT header.\n
- * @param s
- * @param length
- * @return success
+ * Read a TPKT header.
+ *
+ * @param s A stream to read from
+ * @param length A pointer to the result, must not be NULL
+ *
+ * @return \b TRUE for success, \b FALSE otherwise
  */
 
 BOOL tpkt_read_header(wStream* s, UINT16* length)
 {
-	BYTE version;
+	BYTE version = 0;
 
-	if (Stream_GetRemainingLength(s) < 1)
-	{
-		WLog_WARN(TAG, "tpkt invalid data, got %" PRIuz ", require at least 1 more",
-		          Stream_GetRemainingLength(s));
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 1))
 		return FALSE;
-	}
 
 	Stream_Peek_UINT8(s, version);
 
 	if (version == 3)
 	{
-		size_t slen;
-		UINT16 len;
-		if (Stream_GetRemainingLength(s) < 4)
-		{
-			WLog_WARN(TAG, "tpkt invalid data, got %" PRIuz ", require at least 4 more",
-			          Stream_GetRemainingLength(s));
+		UINT16 len = 0;
+		if (!Stream_CheckAndLogRequiredLength(TAG, s, 4))
 			return FALSE;
-		}
 
 		Stream_Seek(s, 2);
 		Stream_Read_UINT16_BE(s, len);
@@ -118,10 +116,9 @@ BOOL tpkt_read_header(wStream* s, UINT16* length)
 			return FALSE;
 		}
 
-		slen = Stream_GetRemainingLength(s) + 4;
-		if (len > slen)
+		if (!Stream_CheckAndLogRequiredLength(TAG, s, len - 4))
 		{
-			WLog_ERR(TAG, "TPKT header length %" PRIu16 ", but only received %" PRIdz, len, slen);
+			WLog_ERR(TAG, "TPKT header length %" PRIu16 ", but received less", len);
 			return FALSE;
 		}
 		*length = len;
@@ -135,8 +132,14 @@ BOOL tpkt_read_header(wStream* s, UINT16* length)
 	return TRUE;
 }
 
-BOOL tpkt_ensure_stream_consumed_(wStream* s, UINT16 length, const char* fkt)
+BOOL tpkt_ensure_stream_consumed_(wStream* s, size_t length, const char* fkt)
 {
+	if (length > UINT16_MAX)
+	{
+		WLog_ERR(TAG, "[%s] length %" PRIuz " > %" PRIu16, fkt, length, UINT16_MAX);
+		return FALSE;
+	}
+
 	size_t rem = Stream_GetRemainingLength(s);
 	if (rem > 0)
 	{
@@ -149,14 +152,17 @@ BOOL tpkt_ensure_stream_consumed_(wStream* s, UINT16 length, const char* fkt)
 }
 
 /**
- * Write a TPKT header.\n
- * @param s
- * @param length
+ * Write a TPKT header.
+ *
+ * @param s A stream to write to
+ * @param length The value to write
+ *
+ * @return \b TRUE for success, \b FALSE otherwise
  */
 
 BOOL tpkt_write_header(wStream* s, UINT16 length)
 {
-	if (Stream_GetRemainingCapacity(s) < 4)
+	if (!Stream_CheckAndLogRequiredCapacity(TAG, (s), 4))
 		return FALSE;
 	Stream_Write_UINT8(s, 3);          /* version */
 	Stream_Write_UINT8(s, 0);          /* reserved */

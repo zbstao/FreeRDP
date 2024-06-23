@@ -23,6 +23,12 @@
 #include <freerdp/api.h>
 #include <freerdp/types.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
+#define ENCOMSP_CHANNEL_NAME "encomsp"
 #define ENCOMSP_SVC_CHANNEL_NAME "encomsp"
 
 typedef struct
@@ -168,5 +174,9 @@ typedef struct
 {
 	DEFINE_ENCOMSP_HEADER_COMMON();
 } ENCOMSP_GRAPHICS_STREAM_RESUMED_PDU;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FREERDP_CHANNEL_ENCOMSP_H */

@@ -25,11 +25,10 @@
 #include "wf_client.h"
 
 void wf_invalidate_region(wfContext* wfc, UINT32 x, UINT32 y, UINT32 width, UINT32 height);
-wfBitmap* wf_image_new(wfContext* wfc, UINT32 width, UINT32 height, UINT32 bpp, const BYTE* data);
-void wf_image_free(wfBitmap* image);
 void wf_update_offset(wfContext* wfc);
 void wf_resize_window(wfContext* wfc);
 void wf_toggle_fullscreen(wfContext* wfc);
+BOOL wf_scale_rect(wfContext* wfc, RECT* source);
 
 void wf_gdi_register_update_callbacks(rdpUpdate* update);
 

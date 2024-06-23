@@ -3,6 +3,8 @@
  * Time Zone
  *
  * Copyright 2012 Marc-Andre Moreau <marcandre.moreau@gmail.com>
+ * Copyright 2024 Armin Novak <anovak@thincast.com>
+ * Copyright 2024 Thincast Technologies GmbH
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,54 +25,50 @@
 #include <winpr/wtypes.h>
 #include <winpr/timezone.h>
 #include <winpr/crt.h>
+#include <winpr/assert.h>
 #include <winpr/file.h>
 #include "../log.h"
 
 #define TAG WINPR_TAG("timezone")
+
+#ifndef MIN
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#endif
+
+#include "TimeZoneNameMap.h"
+#include "TimeZoneIanaAbbrevMap.h"
 
 #ifndef _WIN32
 
 #include <time.h>
 #include <unistd.h>
 
-#include "TimeZones.h"
-#include "WindowsZones.h"
+#endif
 
-static UINT64 winpr_windows_gmtime(void)
-{
-	time_t unix_time;
-	UINT64 windows_time;
-	time(&unix_time);
-
-	if (unix_time < 0)
-		return 0;
-
-	windows_time = (UINT64)unix_time;
-	windows_time *= 10000000;
-	windows_time += 621355968000000000ULL;
-	return windows_time;
-}
-
+#if !defined(_WIN32)
 static char* winpr_read_unix_timezone_identifier_from_file(FILE* fp)
 {
 	const INT CHUNK_SIZE = 32;
-	INT64 rc, read = 0, length = CHUNK_SIZE;
-	char *tmp, *tzid = NULL;
+	INT64 rc = 0;
+	INT64 read = 0;
+	INT64 length = CHUNK_SIZE;
+	char* tzid = NULL;
 
-	tzid = (char*)malloc(length);
+	tzid = (char*)malloc((size_t)length);
 	if (!tzid)
 		return NULL;
 
 	do
 	{
 		rc = fread(tzid + read, 1, length - read - 1, fp);
-		read += rc;
+		if (rc > 0)
+			read += rc;
 
 		if (read < (length - 1))
 			break;
 
 		length += CHUNK_SIZE;
-		tmp = (char*)realloc(tzid, length);
+		char* tmp = (char*)realloc(tzid, length);
 		if (!tmp)
 		{
 			free(tzid);
@@ -87,8 +85,11 @@ static char* winpr_read_unix_timezone_identifier_from_file(FILE* fp)
 	}
 
 	tzid[read] = '\0';
-	if (tzid[read - 1] == '\n')
-		tzid[read - 1] = '\0';
+	if (read > 0)
+	{
+		if (tzid[read - 1] == '\n')
+			tzid[read - 1] = '\0';
+	}
 
 	return tzid;
 }
@@ -96,7 +97,6 @@ static char* winpr_read_unix_timezone_identifier_from_file(FILE* fp)
 static char* winpr_get_timezone_from_link(const char* links[], size_t count)
 {
 	const char* _links[] = { "/etc/localtime", "/etc/TZ" };
-	size_t x;
 
 	if (links == NULL)
 	{
@@ -111,7 +111,7 @@ static char* winpr_get_timezone_from_link(const char* links[], size_t count)
 	 * Some distributions do have to symlink at /etc/TZ.
 	 */
 
-	for (x = 0; x < count; x++)
+	for (size_t x = 0; x < count; x++)
 	{
 		char* tzid = NULL;
 		const char* link = links[x];
@@ -119,14 +119,13 @@ static char* winpr_get_timezone_from_link(const char* links[], size_t count)
 
 		if (buf)
 		{
-			size_t i;
 			size_t sep = 0;
 			size_t alloc = 0;
 			size_t pos = 0;
 			size_t len = pos = strlen(buf);
 
 			/* find the position of the 2nd to last "/" */
-			for (i = 1; i <= len; i++)
+			for (size_t i = 1; i <= len; i++)
 			{
 				const size_t curpos = len - i;
 				const char cur = buf[curpos];
@@ -150,7 +149,7 @@ static char* winpr_get_timezone_from_link(const char* links[], size_t count)
 				goto end;
 
 			strncpy(tzid, &buf[pos], alloc);
-			WLog_DBG(TAG, "%s: tzid: %s", __FUNCTION__, tzid);
+			WLog_DBG(TAG, "tzid: %s", tzid);
 			goto end;
 		}
 
@@ -164,14 +163,7 @@ static char* winpr_get_timezone_from_link(const char* links[], size_t count)
 }
 
 #if defined(ANDROID)
-#include <jni.h>
-static JavaVM* jniVm = NULL;
-
-JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved)
-{
-	jniVm = vm;
-	return JNI_VERSION_1_6;
-}
+#include "../utils/android.h"
 
 static char* winpr_get_android_timezone_identifier(void)
 {
@@ -248,12 +240,13 @@ static char* winpr_get_unix_timezone_identifier_from_file(void)
 #if defined(ANDROID)
 	return winpr_get_android_timezone_identifier();
 #else
-	FILE* fp;
+	FILE* fp = NULL;
 	char* tzid = NULL;
-#if defined(__FreeBSD__) || defined(__OpenBSD__)
-	fp = winpr_fopen("/var/db/zoneinfo", "r");
+#if !defined(WINPR_TIMEZONE_FILE)
+#error \
+    "Please define WINPR_TIMEZONE_FILE with the path to your timezone file (e.g. /etc/timezone or similar)"
 #else
-	fp = winpr_fopen("/etc/timezone", "r");
+	fp = winpr_fopen(WINPR_TIMEZONE_FILE, "r");
 #endif
 
 	if (NULL == fp)
@@ -262,216 +255,301 @@ static char* winpr_get_unix_timezone_identifier_from_file(void)
 	tzid = winpr_read_unix_timezone_identifier_from_file(fp);
 	fclose(fp);
 	if (tzid != NULL)
-		WLog_DBG(TAG, "%s: tzid: %s", __FUNCTION__, tzid);
+		WLog_DBG(TAG, "tzid: %s", tzid);
 	return tzid;
 #endif
 }
 
-static BOOL winpr_match_unix_timezone_identifier_with_list(const char* tzid, const char* list)
+static char* winpr_time_zone_from_env(void)
 {
-	char* p;
-	char* list_copy;
-	char* context = NULL;
-
-	list_copy = _strdup(list);
-
-	if (!list_copy)
-		return FALSE;
-
-	p = strtok_s(list_copy, " ", &context);
-
-	while (p != NULL)
-	{
-		if (strcmp(p, tzid) == 0)
-		{
-			free(list_copy);
-			return TRUE;
-		}
-
-		p = strtok_s(NULL, " ", &context);
-	}
-
-	free(list_copy);
-	return FALSE;
-}
-
-static TIME_ZONE_ENTRY* winpr_detect_windows_time_zone(void)
-{
-	size_t i, j;
-	char *tzid = NULL, *ntzid = NULL;
 	LPCSTR tz = "TZ";
+	char* tzid = NULL;
 
 	DWORD nSize = GetEnvironmentVariableA(tz, NULL, 0);
-	if (nSize)
+	if (nSize > 0)
 	{
-		tzid = (char*)malloc(nSize);
+		tzid = (char*)calloc(nSize, sizeof(char));
+		if (!tzid)
+			goto fail;
 		if (!GetEnvironmentVariableA(tz, tzid, nSize))
+			goto fail;
+		else if (tzid[0] == ':')
 		{
-			free(tzid);
-			tzid = NULL;
+			/* Remove leading colon, see tzset(3) */
+			memmove(tzid, tzid + 1, nSize - sizeof(char));
 		}
 	}
 
-	if (tzid == NULL)
-		tzid = winpr_get_unix_timezone_identifier_from_file();
+	return tzid;
 
-	if (tzid == NULL)
-	{
-		tzid = winpr_get_timezone_from_link(NULL, 0);
-	}
-	else
-	{
-		const char* zipath = "/usr/share/zoneinfo/";
-		char buf[1024] = { 0 };
-		const char* links[] = { buf };
-
-		snprintf(buf, ARRAYSIZE(buf), "%s%s", zipath, tzid);
-		ntzid = winpr_get_timezone_from_link(links, 1);
-		if (ntzid != NULL)
-		{
-			free(tzid);
-			tzid = ntzid;
-		}
-	}
-
-	if (tzid == NULL)
-		return NULL;
-
-	WLog_INFO(TAG, "tzid: %s", tzid);
-
-	for (i = 0; i < TimeZoneTableNrElements; i++)
-	{
-		const TIME_ZONE_ENTRY* tze = &TimeZoneTable[i];
-
-		for (j = 0; j < WindowsTimeZoneIdTableNrElements; j++)
-		{
-			const WINDOWS_TZID_ENTRY* wzid = &WindowsTimeZoneIdTable[j];
-
-			if (strcmp(tze->Id, wzid->windows) != 0)
-				continue;
-
-			if (winpr_match_unix_timezone_identifier_with_list(tzid, wzid->tzid))
-			{
-				TIME_ZONE_ENTRY* ctimezone = (TIME_ZONE_ENTRY*)malloc(sizeof(TIME_ZONE_ENTRY));
-				free(tzid);
-
-				if (!ctimezone)
-					return NULL;
-
-				*ctimezone = TimeZoneTable[i];
-				return ctimezone;
-			}
-		}
-	}
-
-	WLog_ERR(TAG, "Unable to find a match for unix timezone: %s", tzid);
+fail:
 	free(tzid);
 	return NULL;
 }
 
-static const TIME_ZONE_RULE_ENTRY*
-winpr_get_current_time_zone_rule(const TIME_ZONE_RULE_ENTRY* rules, UINT32 count)
+static char* winpr_translate_time_zone(const char* tzid)
 {
-	UINT32 i;
-	UINT64 windows_time;
-	windows_time = winpr_windows_gmtime();
+	const char* zipath = "/usr/share/zoneinfo/";
+	char* buf = NULL;
+	const char* links[] = { buf };
 
-	for (i = 0; i < count; i++)
+	if (!tzid)
+		return NULL;
+
+	if (tzid[0] == '/')
 	{
-		if ((rules[i].TicksStart >= windows_time) && (windows_time >= rules[i].TicksEnd))
-		{
-			/*WLog_ERR(TAG,  "Got rule %d from table at %p with count %"PRIu32"", i, (void*) rules,
-			 * count);*/
-			return &rules[i];
-		}
+		/* Full path given in TZ */
+		links[0] = tzid;
+	}
+	else
+	{
+		size_t bsize = 0;
+		winpr_asprintf(&buf, &bsize, "%s%s", zipath, tzid);
+		links[0] = buf;
 	}
 
-	WLog_ERR(TAG, "Unable to get current timezone rule");
-	return NULL;
+	char* ntzid = winpr_get_timezone_from_link(links, 1);
+	free(buf);
+	return ntzid;
+}
+
+static char* winpr_guess_time_zone(void)
+{
+	char* tzid = winpr_time_zone_from_env();
+	if (tzid)
+		goto end;
+	tzid = winpr_get_unix_timezone_identifier_from_file();
+	if (tzid)
+		goto end;
+	tzid = winpr_get_timezone_from_link(NULL, 0);
+	if (tzid)
+		goto end;
+
+end:
+{
+	char* ntzid = winpr_translate_time_zone(tzid);
+	if (ntzid)
+	{
+		free(tzid);
+		return ntzid;
+	}
+	return tzid;
+}
+}
+
+static SYSTEMTIME tm2systemtime(const struct tm* t)
+{
+	SYSTEMTIME st = { 0 };
+
+	if (t)
+	{
+		st.wYear = (WORD)1900 + t->tm_year;
+		st.wMonth = (WORD)t->tm_mon;
+		st.wDay = (WORD)t->tm_mday;
+		st.wDayOfWeek = (WORD)t->tm_wday;
+		st.wHour = (WORD)t->tm_hour;
+		st.wMinute = (WORD)t->tm_min;
+		st.wSecond = (WORD)t->tm_sec;
+		st.wMilliseconds = 0;
+	}
+	return st;
+}
+
+static LONG get_gmtoff_min(const struct tm* t)
+{
+	WINPR_ASSERT(t);
+	return -(LONG)(t->tm_gmtoff / 60l);
+}
+
+static struct tm next_day(const struct tm* start)
+{
+	struct tm cur = *start;
+	cur.tm_hour = 0;
+	cur.tm_min = 0;
+	cur.tm_sec = 0;
+	cur.tm_isdst = -1;
+	cur.tm_mday++;
+	const time_t t = mktime(&cur);
+	localtime_r(&t, &cur);
+	return cur;
+}
+
+static struct tm adjust_time(const struct tm* start, int hour, int minute)
+{
+	struct tm cur = *start;
+	cur.tm_hour = hour;
+	cur.tm_min = minute;
+	cur.tm_sec = 0;
+	cur.tm_isdst = -1;
+	const time_t t = mktime(&cur);
+	localtime_r(&t, &cur);
+	return cur;
+}
+
+static SYSTEMTIME get_transition_time(const struct tm* start, BOOL toDst)
+{
+	BOOL toggled = FALSE;
+	struct tm first = adjust_time(start, 0, 0);
+	for (int hour = 0; hour < 24; hour++)
+	{
+		for (int minute = 0; minute < 60; minute++)
+		{
+			struct tm cur = adjust_time(start, hour, minute);
+			if (cur.tm_isdst != first.tm_isdst)
+				toggled = TRUE;
+
+			if (toggled)
+			{
+				if (toDst && (cur.tm_isdst > 0))
+					return tm2systemtime(&cur);
+				else if (!toDst && (cur.tm_isdst == 0))
+					return tm2systemtime(&cur);
+			}
+		}
+	}
+	return tm2systemtime(start);
+}
+
+static BOOL get_transition_date(const struct tm* start, BOOL toDst, SYSTEMTIME* pdate)
+{
+	WINPR_ASSERT(start);
+	WINPR_ASSERT(pdate);
+
+	*pdate = tm2systemtime(NULL);
+
+	if (start->tm_isdst < 0)
+		return FALSE;
+
+	BOOL val = start->tm_isdst > 0; // the year starts with DST or not
+	BOOL toggled = FALSE;
+	struct tm cur = *start;
+	for (int day = 1; day <= 365; day++)
+	{
+		cur = next_day(&cur);
+		const BOOL curDst = (cur.tm_isdst > 0);
+		if ((val != curDst) && !toggled)
+			toggled = TRUE;
+
+		if (toggled)
+		{
+			if (toDst && curDst)
+			{
+				*pdate = get_transition_time(&cur, toDst);
+				return TRUE;
+			}
+			if (!toDst && !curDst)
+			{
+				*pdate = get_transition_time(&cur, toDst);
+				return TRUE;
+			}
+		}
+	}
+	return FALSE;
+}
+
+static LONG get_bias(const struct tm* start, BOOL dstBias)
+{
+	if ((start->tm_isdst > 0) && dstBias)
+		return get_gmtoff_min(start);
+	if ((start->tm_isdst == 0) && !dstBias)
+		return get_gmtoff_min(start);
+	if (start->tm_isdst < 0)
+		return get_gmtoff_min(start);
+
+	struct tm cur = *start;
+	for (int day = 1; day <= 365; day++)
+	{
+		cur = next_day(&cur);
+		if ((cur.tm_isdst > 0) && dstBias)
+			return get_gmtoff_min(&cur);
+		else if ((cur.tm_isdst == 0) && !dstBias)
+			return get_gmtoff_min(&cur);
+	}
+	return 0;
+}
+
+static BOOL map_iana_id(const char* iana, LPTIME_ZONE_INFORMATION tz)
+{
+	const char* winId = TimeZoneIanaToWindows(iana, TIME_ZONE_NAME_ID);
+	if (!winId)
+		return FALSE;
+
+	const char* winStd = TimeZoneIanaToWindows(iana, TIME_ZONE_NAME_STANDARD);
+	const char* winDst = TimeZoneIanaToWindows(iana, TIME_ZONE_NAME_DAYLIGHT);
+
+	ConvertUtf8ToWChar(winStd, tz->StandardName, ARRAYSIZE(tz->StandardName));
+	ConvertUtf8ToWChar(winDst, tz->DaylightName, ARRAYSIZE(tz->DaylightName));
+
+	return TRUE;
 }
 
 DWORD GetTimeZoneInformation(LPTIME_ZONE_INFORMATION lpTimeZoneInformation)
 {
-	time_t t;
-	struct tm tres;
-	struct tm* local_time;
-	TIME_ZONE_ENTRY* dtz = NULL;
+	const char** list = NULL;
+	char* tzid = NULL;
+	const char* defaultName = "Client Local Time";
+	DWORD res = TIME_ZONE_ID_UNKNOWN;
+	const TIME_ZONE_INFORMATION empty = { 0 };
 	LPTIME_ZONE_INFORMATION tz = lpTimeZoneInformation;
-	lpTimeZoneInformation->StandardBias = 0;
-	time(&t);
-	local_time = localtime_r(&t, &tres);
+
+	WINPR_ASSERT(tz);
+
+	*tz = empty;
+	ConvertUtf8ToWChar(defaultName, tz->StandardName, ARRAYSIZE(tz->StandardName));
+
+	const time_t t = time(NULL);
+	struct tm tres = { 0 };
+	struct tm* local_time = localtime_r(&t, &tres);
 	if (!local_time)
 		goto out_error;
 
-	memset(tz, 0, sizeof(TIME_ZONE_INFORMATION));
-#ifdef HAVE_TM_GMTOFF
+	tz->Bias = get_bias(local_time, FALSE);
+	if (local_time->tm_isdst >= 0)
 	{
-		long bias = -(local_time->tm_gmtoff / 60L);
-
-		if (bias > INT32_MAX)
-			bias = INT32_MAX;
-
-		tz->Bias = (LONG)bias;
+		/* DST bias is the difference between standard time and DST in minutes */
+		const LONG d = get_bias(local_time, TRUE);
+		tz->DaylightBias = -1 * labs(tz->Bias - d);
+		get_transition_date(local_time, FALSE, &tz->StandardDate);
+		get_transition_date(local_time, TRUE, &tz->DaylightDate);
 	}
-#else
-	tz->Bias = 0;
-#endif
-	dtz = winpr_detect_windows_time_zone();
 
-	if (dtz != NULL)
+	tzid = winpr_guess_time_zone();
+	if (!map_iana_id(tzid, tz))
 	{
-		int status;
-		WLog_DBG(TAG, "tz: Bias=%" PRId32 " sn='%s' dln='%s'", dtz->Bias, dtz->StandardName,
-		         dtz->DaylightName);
-		tz->Bias = dtz->Bias;
-		tz->StandardBias = 0;
-		tz->DaylightBias = 0;
-		ZeroMemory(tz->StandardName, sizeof(tz->StandardName));
-		ZeroMemory(tz->DaylightName, sizeof(tz->DaylightName));
-		status = MultiByteToWideChar(CP_UTF8, 0, dtz->StandardName, -1, tz->StandardName,
-		                             sizeof(tz->StandardName) / sizeof(WCHAR) - 1);
-
-		if (status < 1)
-		{
-			WLog_ERR(TAG, "StandardName conversion failed - using default");
+		const size_t len = TimeZoneIanaAbbrevGet(local_time->tm_zone, NULL, 0);
+		list = calloc(len, sizeof(char*));
+		if (!list)
 			goto out_error;
-		}
-
-		status = MultiByteToWideChar(CP_UTF8, 0, dtz->DaylightName, -1, tz->DaylightName,
-		                             sizeof(tz->DaylightName) / sizeof(WCHAR) - 1);
-
-		if (status < 1)
+		const size_t size = TimeZoneIanaAbbrevGet(local_time->tm_zone, list, len);
+		for (size_t x = 0; x < size; x++)
 		{
-			WLog_ERR(TAG, "DaylightName conversion failed - using default");
-			goto out_error;
-		}
-
-		if ((dtz->SupportsDST) && (dtz->RuleTableCount > 0))
-		{
-			const TIME_ZONE_RULE_ENTRY* rule =
-			    winpr_get_current_time_zone_rule(dtz->RuleTable, dtz->RuleTableCount);
-
-			if (rule != NULL)
+			const char* id = list[x];
+			if (map_iana_id(id, tz))
 			{
-				tz->DaylightBias = -rule->DaylightDelta;
-				tz->StandardDate = rule->StandardDate;
-				tz->DaylightDate = rule->DaylightDate;
+				res = (local_time->tm_isdst) ? TIME_ZONE_ID_DAYLIGHT : TIME_ZONE_ID_STANDARD;
+				break;
 			}
 		}
+	}
+	else
+		res = (local_time->tm_isdst) ? TIME_ZONE_ID_DAYLIGHT : TIME_ZONE_ID_STANDARD;
 
-		free(dtz);
-		/* 1 ... TIME_ZONE_ID_STANDARD
-		 * 2 ... TIME_ZONE_ID_DAYLIGHT */
-		return local_time->tm_isdst ? 2 : 1;
+out_error:
+	free(tzid);
+	free(list);
+	switch (res)
+	{
+		case TIME_ZONE_ID_DAYLIGHT:
+		case TIME_ZONE_ID_STANDARD:
+			WLog_DBG(TAG, "tz: Bias=%" PRId32 " sn='%s' dln='%s'", tz->Bias, tz->StandardName,
+			         tz->DaylightName);
+			break;
+		default:
+			WLog_DBG(TAG, "tz not found, using computed bias %" PRId32 ".", tz->Bias);
+			break;
 	}
 
-	/* could not detect timezone, use computed bias from tm_gmtoff */
-	WLog_DBG(TAG, "tz not found, using computed bias %" PRId32 ".", tz->Bias);
-out_error:
-	free(dtz);
-	memcpy(tz->StandardName, L"Client Local Time", sizeof(tz->StandardName));
-	memcpy(tz->DaylightName, L"Client Local Time", sizeof(tz->DaylightName));
-	return 0; /* TIME_ZONE_ID_UNKNOWN */
+	return res;
 }
 
 BOOL SetTimeZoneInformation(const TIME_ZONE_INFORMATION* lpTimeZoneInformation)
@@ -524,8 +602,28 @@ BOOL TzSpecificLocalTimeToSystemTime(LPTIME_ZONE_INFORMATION lpTimeZoneInformati
 
 DWORD GetDynamicTimeZoneInformation(PDYNAMIC_TIME_ZONE_INFORMATION pTimeZoneInformation)
 {
-	WINPR_UNUSED(pTimeZoneInformation);
-	return 0;
+	TIME_ZONE_INFORMATION tz = { 0 };
+	const DWORD rc = GetTimeZoneInformation(&tz);
+
+	WINPR_ASSERT(pTimeZoneInformation);
+	pTimeZoneInformation->Bias = tz.Bias;
+	memcpy(pTimeZoneInformation->StandardName, tz.StandardName,
+	       MIN(sizeof(tz.StandardName), sizeof(pTimeZoneInformation->StandardName)));
+	pTimeZoneInformation->StandardDate = tz.StandardDate;
+	pTimeZoneInformation->StandardBias = tz.StandardBias;
+
+	memcpy(pTimeZoneInformation->DaylightName, tz.DaylightName,
+	       MIN(sizeof(tz.DaylightName), sizeof(pTimeZoneInformation->DaylightName)));
+	pTimeZoneInformation->DaylightDate = tz.DaylightDate;
+	pTimeZoneInformation->DaylightBias = tz.DaylightBias;
+
+	memcpy(pTimeZoneInformation->TimeZoneKeyName, tz.StandardName,
+	       MIN(sizeof(tz.StandardName), sizeof(pTimeZoneInformation->TimeZoneKeyName)));
+
+	/* https://learn.microsoft.com/en-us/windows/win32/api/timezoneapi/ns-timezoneapi-dynamic_time_zone_information
+	 */
+	pTimeZoneInformation->DynamicDaylightTimeDisabled = FALSE;
+	return rc;
 }
 
 BOOL SetDynamicTimeZoneInformation(const DYNAMIC_TIME_ZONE_INFORMATION* lpTimeZoneInformation)

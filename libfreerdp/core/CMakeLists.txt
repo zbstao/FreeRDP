@@ -18,10 +18,11 @@
 set(MODULE_NAME "freerdp-core")
 set(MODULE_PREFIX "FREERDP_CORE")
 
+CHECK_INCLUDE_FILES("ctype.h;linux/vm_sockets.h" HAVE_AF_VSOCK_H)
+
 freerdp_definition_add(-DEXT_PATH="${FREERDP_EXTENSION_PATH}")
 
 freerdp_include_directory_add(${OPENSSL_INCLUDE_DIR})
-freerdp_include_directory_add(${GSS_INCLUDE_DIR})
 
 set(${MODULE_PREFIX}_GATEWAY_DIR "gateway")
 
@@ -42,18 +43,22 @@ set(${MODULE_PREFIX}_GATEWAY_SRCS
 	${${MODULE_PREFIX}_GATEWAY_DIR}/rts.h
 	${${MODULE_PREFIX}_GATEWAY_DIR}/rts_signature.c
 	${${MODULE_PREFIX}_GATEWAY_DIR}/rts_signature.h
-	${${MODULE_PREFIX}_GATEWAY_DIR}/ntlm.c
-	${${MODULE_PREFIX}_GATEWAY_DIR}/ntlm.h
 	${${MODULE_PREFIX}_GATEWAY_DIR}/http.c
 	${${MODULE_PREFIX}_GATEWAY_DIR}/http.h
+	${${MODULE_PREFIX}_GATEWAY_DIR}/websocket.c
+	${${MODULE_PREFIX}_GATEWAY_DIR}/websocket.h
+	${${MODULE_PREFIX}_GATEWAY_DIR}/wst.c
+	${${MODULE_PREFIX}_GATEWAY_DIR}/wst.h
+	${${MODULE_PREFIX}_GATEWAY_DIR}/arm.c
+	${${MODULE_PREFIX}_GATEWAY_DIR}/arm.h
 	${${MODULE_PREFIX}_GATEWAY_DIR}/ncacn_http.c
 	${${MODULE_PREFIX}_GATEWAY_DIR}/ncacn_http.h)
 
 set(${MODULE_PREFIX}_SRCS
+    state.h
+    state.c
 	utils.c
 	utils.h
-	bulk.c
-	bulk.h
 	streamdump.c
 	activation.c
 	activation.h
@@ -64,8 +69,6 @@ set(${MODULE_PREFIX}_SRCS
 	nla.c
 	nla.h
 	smartcardlogon.c
-	tscredentials.c
-	tscredentials.h
 	nego.c
 	nego.h
 	info.c
@@ -94,8 +97,6 @@ set(${MODULE_PREFIX}_SRCS
 	metrics.c
 	capabilities.c
 	capabilities.h
-	certificate.c
-	certificate.h
 	connection.c
 	connection.h
 	redirection.c
@@ -108,6 +109,7 @@ set(${MODULE_PREFIX}_SRCS
 	multitransport.h
 	timezone.c
 	timezone.h
+	childsession.c
 	rdp.c
 	rdp.h
 	tcp.c
@@ -137,7 +139,14 @@ set(${MODULE_PREFIX}_SRCS
 	peer.c
 	peer.h
 	display.c
-	display.h)
+	display.h
+	credssp_auth.c
+	credssp_auth.h
+	rdstls.c
+	rdstls.h
+	aad.c
+	aad.h
+)
 
 set(${MODULE_PREFIX}_SRCS ${${MODULE_PREFIX}_SRCS} ${${MODULE_PREFIX}_GATEWAY_SRCS})
 

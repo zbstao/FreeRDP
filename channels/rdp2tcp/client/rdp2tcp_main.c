@@ -24,6 +24,7 @@
 #include <winpr/pipe.h>
 #include <winpr/thread.h>
 
+#include <freerdp/freerdp.h>
 #include <freerdp/svc.h>
 #include <freerdp/channels/rdp2tcp.h>
 
@@ -112,9 +113,8 @@ static void dumpData(char* data, unsigned length)
 {
 	unsigned const limit = 98;
 	unsigned l = length > limit ? limit / 2 : length;
-	unsigned i;
 
-	for (i = 0; i < l; ++i)
+	for (unsigned i = 0; i < l; ++i)
 	{
 		printf("%02hhx", data[i]);
 	}
@@ -123,7 +123,7 @@ static void dumpData(char* data, unsigned length)
 	{
 		printf("...");
 
-		for (i = length - l; i < length; ++i)
+		for (unsigned i = length - l; i < length; ++i)
 			printf("%02hhx", data[i]);
 	}
 
@@ -132,12 +132,15 @@ static void dumpData(char* data, unsigned length)
 
 static DWORD WINAPI copyThread(void* data)
 {
+	DWORD status = WAIT_OBJECT_0;
 	Plugin* plugin = (Plugin*)data;
 	size_t const bufsize = 16 * 1024;
 
-	while (1)
+	while (status == WAIT_OBJECT_0)
 	{
-		DWORD dwRead;
+
+		HANDLE handles[MAXIMUM_WAIT_OBJECTS] = { 0 };
+		DWORD dwRead = 0;
 		char* buffer = malloc(bufsize);
 
 		if (!buffer)
@@ -168,8 +171,11 @@ static DWORD WINAPI copyThread(void* data)
 			goto fail;
 		}
 
-		WaitForSingleObject(plugin->writeComplete, INFINITE);
-		ResetEvent(plugin->writeComplete);
+		handles[0] = plugin->writeComplete;
+		handles[1] = freerdp_abort_event(plugin->channelEntryPoints.context);
+		status = WaitForMultipleObjects(2, handles, FALSE, INFINITE);
+		if (status == WAIT_OBJECT_0)
+			ResetEvent(plugin->writeComplete);
 	}
 
 fail:
@@ -190,7 +196,7 @@ static void closeChannel(Plugin* plugin)
 static void dataReceived(Plugin* plugin, void* pData, UINT32 dataLength, UINT32 totalLength,
                          UINT32 dataFlags)
 {
-	DWORD dwWritten;
+	DWORD dwWritten = 0;
 
 	if (dataFlags & CHANNEL_FLAG_SUSPEND)
 	{
@@ -314,9 +320,10 @@ static VOID VCAPITYPE VirtualChannelInitEventEx(LPVOID lpUserParam, LPVOID pInit
 #else
 #define VirtualChannelEntryEx FREERDP_API VirtualChannelEntryEx
 #endif
-BOOL VCAPITYPE VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints, PVOID pInitHandle)
+FREERDP_ENTRY_POINT(BOOL VCAPITYPE VirtualChannelEntryEx(PCHANNEL_ENTRY_POINTS pEntryPoints,
+                                                         PVOID pInitHandle))
 {
-	CHANNEL_ENTRY_POINTS_FREERDP_EX* pEntryPointsEx;
+	CHANNEL_ENTRY_POINTS_FREERDP_EX* pEntryPointsEx = NULL;
 	CHANNEL_DEF channelDef;
 	Plugin* plugin = (Plugin*)calloc(1, sizeof(Plugin));
 

@@ -23,16 +23,47 @@
 #include <winpr/cmdline.h>
 
 #include <freerdp/api.h>
-#include <freerdp/freerdp.h>
+#include <freerdp/types.h>
+#include <freerdp/settings.h>
 
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
+	/** \brief parses command line arguments to appropriate settings values.
+	 *
+	 * \param settings The settings instance to store the parsed values to
+	 * \param argc the number of argv values
+	 * \param argv an array of strings (char pointer)
+	 * \param allowUnknown Allow unknown command line arguments or \b FALSE if not.
+	 *
+	 * \return \b 0 in case of success, a negative number in case of failure.
+	 */
 	FREERDP_API int freerdp_client_settings_parse_command_line_arguments(rdpSettings* settings,
 	                                                                     int argc, char** argv,
 	                                                                     BOOL allowUnknown);
+
+	/** \brief parses command line arguments to appropriate settings values. Additionally allows
+	 * supplying custom command line arguments and a handler function.
+	 *
+	 * \param settings The settings instance to store the parsed values to
+	 * \param argc the number of argv values
+	 * \param argv an array of strings (char pointer)
+	 * \param allowUnknown Allow unknown command line arguments or \b FALSE if not.
+	 * \param args Pointer to the custom arguments
+	 * \param count The number of custom arguments
+	 * \param handle_option the handler function for custom arguments.
+	 * \param handle_userdata custom data supplied to \b handle_option as context
+	 *
+	 * \return \b 0 in case of success, a negative number in case of failure.
+	 */
+	FREERDP_API int freerdp_client_settings_parse_command_line_arguments_ex(
+	    rdpSettings* settings, int argc, char** argv, BOOL allowUnknown,
+	    COMMAND_LINE_ARGUMENT_A* args, size_t count,
+	    int (*handle_option)(const COMMAND_LINE_ARGUMENT* arg, void* custom),
+	    void* handle_userdata);
+
 	FREERDP_API int freerdp_client_settings_command_line_status_print(rdpSettings* settings,
 	                                                                  int status, int argc,
 	                                                                  char** argv);
@@ -41,6 +72,10 @@ extern "C"
 	                                                     int argc, char** argv,
 	                                                     const COMMAND_LINE_ARGUMENT_A* custom);
 	FREERDP_API BOOL freerdp_client_load_addins(rdpChannels* channels, rdpSettings* settings);
+
+	FREERDP_API void freerdp_client_warn_unmaintained(int argc, char* argv[]);
+	FREERDP_API void freerdp_client_warn_experimental(int argc, char* argv[]);
+	FREERDP_API void freerdp_client_warn_deprecated(int argc, char* argv[]);
 
 	FREERDP_API BOOL freerdp_client_print_version(void);
 	FREERDP_API BOOL freerdp_client_print_buildconfig(void);

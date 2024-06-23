@@ -15,22 +15,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-set(MODULE_NAME "xfreerdp-cli")
+set(MODULE_NAME "xfreerdp")
 set(MODULE_PREFIX "FREERDP_CLIENT_X11")
 
-set(${MODULE_PREFIX}_SRCS
-	xfreerdp.c)
+set(SRCS
+    xfreerdp.c
+)
 
-add_executable(${MODULE_NAME} ${${MODULE_PREFIX}_SRCS})
-set_target_properties(${MODULE_NAME} PROPERTIES OUTPUT_NAME "xfreerdp" RUNTIME_OUTPUT_DIRECTORY "..")
+AddTargetWithResourceFile(${MODULE_NAME} TRUE "${PROJECT_VERSION}" SRCS)
+set_target_properties(${MODULE_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "..")
 
-set(${MODULE_PREFIX}_LIBS ${${MODULE_PREFIX}_LIBS} xfreerdp-client freerdp-client)
+list(APPEND LIBS
+    xfreerdp-client
+)
 
-if(OPENBSD)
-	target_link_libraries(${MODULE_NAME} ${${MODULE_PREFIX}_LIBS} ossaudio)
-else()
-	target_link_libraries(${MODULE_NAME} ${${MODULE_PREFIX}_LIBS})
-endif()
+target_link_libraries(${MODULE_NAME} PRIVATE ${LIBS})
 
 install(TARGETS ${MODULE_NAME} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT client)
 

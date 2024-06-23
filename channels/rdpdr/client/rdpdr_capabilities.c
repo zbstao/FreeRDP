@@ -30,55 +30,71 @@
 #include <winpr/crt.h>
 #include <winpr/stream.h>
 
+#include <freerdp/utils/rdpdr_utils.h>
+
 #include "rdpdr_main.h"
 #include "rdpdr_capabilities.h"
 
-/* Output device redirection capability set header */
-static void rdpdr_write_capset_header(wStream* s, UINT16 capabilityType, UINT16 capabilityLength,
-                                      UINT32 version)
-{
-	Stream_Write_UINT16(s, capabilityType);
-	Stream_Write_UINT16(s, capabilityLength);
-	Stream_Write_UINT32(s, version);
-}
+#define RDPDR_CAPABILITY_HEADER_LENGTH 8
 
 /* Output device direction general capability set */
 static void rdpdr_write_general_capset(rdpdrPlugin* rdpdr, wStream* s)
 {
 	WINPR_UNUSED(rdpdr);
-	rdpdr_write_capset_header(s, CAP_GENERAL_TYPE, 44, GENERAL_CAPABILITY_VERSION_02);
-	Stream_Write_UINT32(s, 0); /* osType, ignored on receipt */
-	Stream_Write_UINT32(s, 0); /* osVersion, unused and must be set to zero */
-	Stream_Write_UINT16(s, rdpdr->versionMajor); /* protocolMajorVersion, must be set to 1 */
-	Stream_Write_UINT16(s, rdpdr->versionMinor); /* protocolMinorVersion */
-	Stream_Write_UINT32(s, 0x0000FFFF);                  /* ioCode1 */
-	Stream_Write_UINT32(s, 0); /* ioCode2, must be set to zero, reserved for future use */
-	Stream_Write_UINT32(s, RDPDR_DEVICE_REMOVE_PDUS | RDPDR_CLIENT_DISPLAY_NAME_PDU |
-	                           RDPDR_USER_LOGGEDON_PDU); /* extendedPDU */
-	Stream_Write_UINT32(s, ENABLE_ASYNCIO);              /* extraFlags1 */
-	Stream_Write_UINT32(s, 0); /* extraFlags2, must be set to zero, reserved for future use */
+	const RDPDR_CAPABILITY_HEADER header = { CAP_GENERAL_TYPE, RDPDR_CAPABILITY_HEADER_LENGTH + 36,
+		                                     GENERAL_CAPABILITY_VERSION_02 };
+
+	const UINT32 ioCode1 = rdpdr->clientIOCode1 & rdpdr->serverIOCode1;
+	const UINT32 ioCode2 = rdpdr->clientIOCode2 & rdpdr->serverIOCode2;
+
+	rdpdr_write_capset_header(rdpdr->log, s, &header);
+	Stream_Write_UINT32(s, rdpdr->clientOsType);    /* osType, ignored on receipt */
+	Stream_Write_UINT32(s, rdpdr->clientOsVersion); /* osVersion, unused and must be set to zero */
+	Stream_Write_UINT16(s, rdpdr->clientVersionMajor); /* protocolMajorVersion, must be set to 1 */
+	Stream_Write_UINT16(s, rdpdr->clientVersionMinor); /* protocolMinorVersion */
+	Stream_Write_UINT32(s, ioCode1);                   /* ioCode1 */
+	Stream_Write_UINT32(s, ioCode2); /* ioCode2, must be set to zero, reserved for future use */
+	Stream_Write_UINT32(s, rdpdr->clientExtendedPDU); /* extendedPDU */
+	Stream_Write_UINT32(s, rdpdr->clientExtraFlags1); /* extraFlags1 */
 	Stream_Write_UINT32(
-	    s, 0); /* SpecialTypeDeviceCap, number of special devices to be redirected before logon */
+	    s,
+	    rdpdr->clientExtraFlags2); /* extraFlags2, must be set to zero, reserved for future use */
+	Stream_Write_UINT32(
+	    s, rdpdr->clientSpecialTypeDeviceCap); /* SpecialTypeDeviceCap, number of special devices to
+	                                              be redirected before logon */
 }
 
 /* Process device direction general capability set */
-static UINT rdpdr_process_general_capset(rdpdrPlugin* rdpdr, wStream* s)
+static UINT rdpdr_process_general_capset(rdpdrPlugin* rdpdr, wStream* s,
+                                         const RDPDR_CAPABILITY_HEADER* header)
 {
-	UINT16 capabilityLength;
-	WINPR_UNUSED(rdpdr);
+	WINPR_ASSERT(header);
 
-	if (Stream_GetRemainingLength(s) < 2)
+	if (header->CapabilityLength != 36)
+	{
+		WLog_Print(rdpdr->log, WLOG_ERROR,
+		           "CAP_GENERAL_TYPE::CapabilityLength expected 36, got %" PRIu32,
+		           header->CapabilityLength);
+		return ERROR_INVALID_DATA;
+	}
+	if (!Stream_CheckAndLogRequiredLengthWLog(rdpdr->log, s, 36))
 		return ERROR_INVALID_DATA;
 
-	Stream_Read_UINT16(s, capabilityLength);
-
-	if (capabilityLength < 4)
-		return ERROR_INVALID_DATA;
-
-	if (Stream_GetRemainingLength(s) < capabilityLength - 4U)
-		return ERROR_INVALID_DATA;
-
-	Stream_Seek(s, capabilityLength - 4U);
+	Stream_Read_UINT32(s, rdpdr->serverOsType);    /* osType, ignored on receipt */
+	Stream_Read_UINT32(s, rdpdr->serverOsVersion); /* osVersion, unused and must be set to zero */
+	Stream_Read_UINT16(s, rdpdr->serverVersionMajor); /* protocolMajorVersion, must be set to 1 */
+	Stream_Read_UINT16(s, rdpdr->serverVersionMinor); /* protocolMinorVersion */
+	Stream_Read_UINT32(s, rdpdr->serverIOCode1);      /* ioCode1 */
+	Stream_Read_UINT32(
+	    s, rdpdr->serverIOCode2); /* ioCode2, must be set to zero, reserved for future use */
+	Stream_Read_UINT32(s, rdpdr->serverExtendedPDU); /* extendedPDU */
+	Stream_Read_UINT32(s, rdpdr->serverExtraFlags1); /* extraFlags1 */
+	Stream_Read_UINT32(
+	    s,
+	    rdpdr->serverExtraFlags2); /* extraFlags2, must be set to zero, reserved for future use */
+	Stream_Read_UINT32(
+	    s, rdpdr->serverSpecialTypeDeviceCap); /* SpecialTypeDeviceCap, number of special devices to
+	                                              be redirected before logon */
 	return CHANNEL_RC_OK;
 }
 
@@ -86,27 +102,17 @@ static UINT rdpdr_process_general_capset(rdpdrPlugin* rdpdr, wStream* s)
 static void rdpdr_write_printer_capset(rdpdrPlugin* rdpdr, wStream* s)
 {
 	WINPR_UNUSED(rdpdr);
-	rdpdr_write_capset_header(s, CAP_PRINTER_TYPE, 8, PRINT_CAPABILITY_VERSION_01);
+	const RDPDR_CAPABILITY_HEADER header = { CAP_PRINTER_TYPE, RDPDR_CAPABILITY_HEADER_LENGTH,
+		                                     PRINT_CAPABILITY_VERSION_01 };
+	rdpdr_write_capset_header(rdpdr->log, s, &header);
 }
 
 /* Process printer direction capability set */
-static UINT rdpdr_process_printer_capset(rdpdrPlugin* rdpdr, wStream* s)
+static UINT rdpdr_process_printer_capset(rdpdrPlugin* rdpdr, wStream* s,
+                                         const RDPDR_CAPABILITY_HEADER* header)
 {
-	UINT16 capabilityLength;
-	WINPR_UNUSED(rdpdr);
-
-	if (Stream_GetRemainingLength(s) < 2)
-		return ERROR_INVALID_DATA;
-
-	Stream_Read_UINT16(s, capabilityLength);
-
-	if (capabilityLength < 4)
-		return ERROR_INVALID_DATA;
-
-	if (Stream_GetRemainingLength(s) < capabilityLength - 4U)
-		return ERROR_INVALID_DATA;
-
-	Stream_Seek(s, capabilityLength - 4U);
+	WINPR_ASSERT(header);
+	Stream_Seek(s, header->CapabilityLength);
 	return CHANNEL_RC_OK;
 }
 
@@ -114,27 +120,17 @@ static UINT rdpdr_process_printer_capset(rdpdrPlugin* rdpdr, wStream* s)
 static void rdpdr_write_port_capset(rdpdrPlugin* rdpdr, wStream* s)
 {
 	WINPR_UNUSED(rdpdr);
-	rdpdr_write_capset_header(s, CAP_PORT_TYPE, 8, PORT_CAPABILITY_VERSION_01);
+	const RDPDR_CAPABILITY_HEADER header = { CAP_PORT_TYPE, RDPDR_CAPABILITY_HEADER_LENGTH,
+		                                     PORT_CAPABILITY_VERSION_01 };
+	rdpdr_write_capset_header(rdpdr->log, s, &header);
 }
 
 /* Process port redirection capability set */
-static UINT rdpdr_process_port_capset(rdpdrPlugin* rdpdr, wStream* s)
+static UINT rdpdr_process_port_capset(rdpdrPlugin* rdpdr, wStream* s,
+                                      const RDPDR_CAPABILITY_HEADER* header)
 {
-	UINT16 capabilityLength;
-	WINPR_UNUSED(rdpdr);
-
-	if (Stream_GetRemainingLength(s) < 2)
-		return ERROR_INVALID_DATA;
-
-	Stream_Read_UINT16(s, capabilityLength);
-
-	if (capabilityLength < 4U)
-		return ERROR_INVALID_DATA;
-
-	if (Stream_GetRemainingLength(s) < capabilityLength - 4U)
-		return ERROR_INVALID_DATA;
-
-	Stream_Seek(s, capabilityLength - 4U);
+	WINPR_ASSERT(header);
+	Stream_Seek(s, header->CapabilityLength);
 	return CHANNEL_RC_OK;
 }
 
@@ -142,27 +138,17 @@ static UINT rdpdr_process_port_capset(rdpdrPlugin* rdpdr, wStream* s)
 static void rdpdr_write_drive_capset(rdpdrPlugin* rdpdr, wStream* s)
 {
 	WINPR_UNUSED(rdpdr);
-	rdpdr_write_capset_header(s, CAP_DRIVE_TYPE, 8, DRIVE_CAPABILITY_VERSION_02);
+	const RDPDR_CAPABILITY_HEADER header = { CAP_DRIVE_TYPE, RDPDR_CAPABILITY_HEADER_LENGTH,
+		                                     DRIVE_CAPABILITY_VERSION_02 };
+	rdpdr_write_capset_header(rdpdr->log, s, &header);
 }
 
 /* Process drive redirection capability set */
-static UINT rdpdr_process_drive_capset(rdpdrPlugin* rdpdr, wStream* s)
+static UINT rdpdr_process_drive_capset(rdpdrPlugin* rdpdr, wStream* s,
+                                       const RDPDR_CAPABILITY_HEADER* header)
 {
-	UINT16 capabilityLength;
-	WINPR_UNUSED(rdpdr);
-
-	if (Stream_GetRemainingLength(s) < 2)
-		return ERROR_INVALID_DATA;
-
-	Stream_Read_UINT16(s, capabilityLength);
-
-	if (capabilityLength < 4)
-		return ERROR_INVALID_DATA;
-
-	if (Stream_GetRemainingLength(s) < capabilityLength - 4U)
-		return ERROR_INVALID_DATA;
-
-	Stream_Seek(s, capabilityLength - 4U);
+	WINPR_ASSERT(header);
+	Stream_Seek(s, header->CapabilityLength);
 	return CHANNEL_RC_OK;
 }
 
@@ -170,76 +156,68 @@ static UINT rdpdr_process_drive_capset(rdpdrPlugin* rdpdr, wStream* s)
 static void rdpdr_write_smartcard_capset(rdpdrPlugin* rdpdr, wStream* s)
 {
 	WINPR_UNUSED(rdpdr);
-	rdpdr_write_capset_header(s, CAP_SMARTCARD_TYPE, 8, SMARTCARD_CAPABILITY_VERSION_01);
+	const RDPDR_CAPABILITY_HEADER header = { CAP_SMARTCARD_TYPE, RDPDR_CAPABILITY_HEADER_LENGTH,
+		                                     SMARTCARD_CAPABILITY_VERSION_01 };
+	rdpdr_write_capset_header(rdpdr->log, s, &header);
 }
 
 /* Process smartcard redirection capability set */
-static UINT rdpdr_process_smartcard_capset(rdpdrPlugin* rdpdr, wStream* s)
+static UINT rdpdr_process_smartcard_capset(rdpdrPlugin* rdpdr, wStream* s,
+                                           const RDPDR_CAPABILITY_HEADER* header)
 {
-	UINT16 capabilityLength;
-	WINPR_UNUSED(rdpdr);
-
-	if (Stream_GetRemainingLength(s) < 2)
-		return ERROR_INVALID_DATA;
-
-	Stream_Read_UINT16(s, capabilityLength);
-
-	if (capabilityLength < 4)
-		return ERROR_INVALID_DATA;
-
-	if (Stream_GetRemainingLength(s) < capabilityLength - 4U)
-		return ERROR_INVALID_DATA;
-
-	Stream_Seek(s, capabilityLength - 4U);
+	WINPR_ASSERT(header);
+	Stream_Seek(s, header->CapabilityLength);
 	return CHANNEL_RC_OK;
 }
 
 UINT rdpdr_process_capability_request(rdpdrPlugin* rdpdr, wStream* s)
 {
 	UINT status = CHANNEL_RC_OK;
-	UINT16 i;
-	UINT16 numCapabilities;
-	UINT16 capabilityType;
+	UINT16 numCapabilities = 0;
 
 	if (!rdpdr || !s)
 		return CHANNEL_RC_NULL_DATA;
 
-	if (Stream_GetRemainingLength(s) < 4)
+	WINPR_ASSERT(rdpdr->state == RDPDR_CHANNEL_STATE_SERVER_CAPS);
+	rdpdr_state_advance(rdpdr, RDPDR_CHANNEL_STATE_CLIENT_CAPS);
+
+	if (!Stream_CheckAndLogRequiredLengthWLog(rdpdr->log, s, 4))
 		return ERROR_INVALID_DATA;
 
 	Stream_Read_UINT16(s, numCapabilities);
 	Stream_Seek(s, 2); /* pad (2 bytes) */
 
-	for (i = 0; i < numCapabilities; i++)
+	for (UINT16 i = 0; i < numCapabilities; i++)
 	{
-		if (Stream_GetRemainingLength(s) < sizeof(UINT16))
-			return ERROR_INVALID_DATA;
+		RDPDR_CAPABILITY_HEADER header = { 0 };
+		UINT error = rdpdr_read_capset_header(rdpdr->log, s, &header);
+		if (error != CHANNEL_RC_OK)
+			return error;
 
-		Stream_Read_UINT16(s, capabilityType);
-
-		switch (capabilityType)
+		switch (header.CapabilityType)
 		{
 			case CAP_GENERAL_TYPE:
-				status = rdpdr_process_general_capset(rdpdr, s);
+				status = rdpdr_process_general_capset(rdpdr, s, &header);
 				break;
 
 			case CAP_PRINTER_TYPE:
-				status = rdpdr_process_printer_capset(rdpdr, s);
+				status = rdpdr_process_printer_capset(rdpdr, s, &header);
 				break;
 
 			case CAP_PORT_TYPE:
-				status = rdpdr_process_port_capset(rdpdr, s);
+				status = rdpdr_process_port_capset(rdpdr, s, &header);
 				break;
 
 			case CAP_DRIVE_TYPE:
-				status = rdpdr_process_drive_capset(rdpdr, s);
+				status = rdpdr_process_drive_capset(rdpdr, s, &header);
 				break;
 
 			case CAP_SMARTCARD_TYPE:
-				status = rdpdr_process_smartcard_capset(rdpdr, s);
+				status = rdpdr_process_smartcard_capset(rdpdr, s, &header);
 				break;
 
 			default:
+
 				break;
 		}
 
@@ -257,12 +235,14 @@ UINT rdpdr_process_capability_request(rdpdrPlugin* rdpdr, wStream* s)
  */
 UINT rdpdr_send_capability_response(rdpdrPlugin* rdpdr)
 {
-	wStream* s;
-	s = Stream_New(NULL, 256);
+	wStream* s = NULL;
+
+	WINPR_ASSERT(rdpdr);
+	s = StreamPool_Take(rdpdr->pool, 256);
 
 	if (!s)
 	{
-		WLog_ERR(TAG, "Stream_New failed!");
+		WLog_Print(rdpdr->log, WLOG_ERROR, "Stream_New failed!");
 		return CHANNEL_RC_NO_MEMORY;
 	}
 

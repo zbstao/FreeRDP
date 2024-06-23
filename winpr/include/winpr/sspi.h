@@ -20,6 +20,7 @@
 #ifndef WINPR_SSPI_H
 #define WINPR_SSPI_H
 
+#include <winpr/platform.h>
 #include <winpr/winpr.h>
 #include <winpr/wtypes.h>
 #include <winpr/windows.h>
@@ -54,19 +55,15 @@ typedef struct
 typedef SECURITY_INTEGER TimeStamp;
 typedef SECURITY_INTEGER* PTimeStamp;
 
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
+WINPR_PRAGMA_DIAG_PUSH
+WINPR_PRAGMA_DIAG_IGNORED_RESERVED_ID_MACRO
 
 #ifndef __SECSTATUS_DEFINED__
 typedef LONG SECURITY_STATUS;
 #define __SECSTATUS_DEFINED__
 #endif /* __SECSTATUS_DEFINED__ */
 
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
+WINPR_PRAGMA_DIAG_POP
 
 typedef struct
 {
@@ -461,6 +458,9 @@ typedef struct
 /* Security Credentials Attributes */
 
 #define SECPKG_CRED_ATTR_NAMES 1
+#define SECPKG_CRED_ATTR_SSI_PROVIDER 2
+#define SECPKG_CRED_ATTR_CERT 4
+#define SECPKG_CRED_ATTR_PAC_BYPASS 5
 
 typedef struct
 {
@@ -482,9 +482,71 @@ typedef SecPkgCredentials_NamesW* PSecPkgCredentials_NamesW;
 #define PSecPkgCredentials_Names PSecPkgCredentials_NamesA
 #endif
 
+typedef struct
+{
+	SEC_WCHAR* sProviderName;
+	unsigned long ProviderInfoLength;
+	char* ProviderInfo;
+} SecPkgCredentials_SSIProviderW, *PSecPkgCredentials_SSIProviderW;
+
+typedef struct
+{
+	SEC_CHAR* sProviderName;
+	unsigned long ProviderInfoLength;
+	char* ProviderInfo;
+} SecPkgCredentials_SSIProviderA, *PSecPkgCredentials_SSIProviderA;
+
+#ifdef UNICODE
+#define SecPkgCredentials_SSIProvider SecPkgCredentials_SSIProviderW
+#define PSecPkgCredentials_SSIProvider PSecPkgCredentials_SSIProviderW
+#else
+#define SecPkgCredentials_SSIProvider SecPkgCredentials_SSIProviderA
+#define PSecPkgCredentials_SSIProvider PSecPkgCredentials_SSIProviderA
+#endif
+
+typedef struct _SecPkgCredentials_Cert
+{
+	unsigned long EncodedCertSize;
+	unsigned char* EncodedCert;
+} SecPkgCredentials_Cert, *PSecPkgCredentials_Cert;
+
 #endif /* !defined(_WIN32) || defined(_UWP) */
 
-#if !defined(_WIN32) || defined(_UWP) || (defined(__MINGW32__) && (__MINGW64_VERSION_MAJOR < 8))
+#if !defined(_WIN32) || defined(_UWP) || (defined(__MINGW32__) && (__MINGW64_VERSION_MAJOR <= 8))
+
+#define SECPKG_CRED_ATTR_KDC_PROXY_SETTINGS 3
+
+#define KDC_PROXY_SETTINGS_V1 1
+#define KDC_PROXY_SETTINGS_FLAGS_FORCEPROXY 0x1
+
+typedef struct
+{
+	ULONG Version;
+	ULONG Flags;
+	USHORT ProxyServerOffset;
+	USHORT ProxyServerLength;
+	USHORT ClientTlsCredOffset;
+	USHORT ClientTlsCredLength;
+} SecPkgCredentials_KdcProxySettingsW, *PSecPkgCredentials_KdcProxySettingsW;
+
+typedef struct
+{
+	ULONG Version;
+	ULONG Flags;
+	USHORT ProxyServerOffset;
+	USHORT ProxyServerLength;
+	USHORT ClientTlsCredOffset;
+	USHORT ClientTlsCredLength;
+} SecPkgCredentials_KdcProxySettingsA, *PSecPkgCredentials_KdcProxySettingsA;
+
+#ifdef UNICODE
+#define SecPkgCredentials_KdcProxySettings SecPkgCredentials_KdcProxySettingsW
+#define PSecPkgCredentials_KdcProxySettings PSecPkgCredentials_KdcProxySettingsW
+#else
+#define SecPkgCredentials_KdcProxySettings SecPkgCredentials_KdcProxySettingsA
+#define PSecPkgCredentials_KdcProxySettings SecPkgCredentials_KdcProxySettingsA
+#endif
+
 typedef struct
 {
 	UINT32 BindingsLength;
@@ -598,65 +660,49 @@ typedef struct
 
 #define SEC_WINNT_AUTH_IDENTITY_ANSI 0x1
 #define SEC_WINNT_AUTH_IDENTITY_UNICODE 0x2
+#define SEC_WINNT_AUTH_IDENTITY_MARSHALLED 0x4
+#define SEC_WINNT_AUTH_IDENTITY_ONLY 0x8
+#define SEC_WINNT_AUTH_IDENTITY_EXTENDED 0x100
 
-typedef struct
-{
-	char* cache;
-	char* armorCache;
-	char* pkinitX509Anchors;
-	char* pkinitX509Identity;
-	BOOL withPac;
-	INT32 startTime;
-	INT32 renewLifeTime;
-	INT32 lifeTime;
-	BYTE certSha1[20];
-} SEC_WINPR_KERBEROS_SETTINGS;
+#if !defined(_WIN32) || defined(_UWP) || defined(__MINGW32__)
 
-#if !defined(_WIN32) || defined(_UWP)
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wreserved-id-macro"
-#endif
+WINPR_PRAGMA_DIAG_PUSH
+WINPR_PRAGMA_DIAG_IGNORED_RESERVED_ID_MACRO
 
 #ifndef _AUTH_IDENTITY_DEFINED
 #define _AUTH_IDENTITY_DEFINED
 
 typedef struct
 {
-	/* TSPasswordCreds */
 	UINT16* User;
-	UINT32 UserLength;
+	ULONG UserLength;
 	UINT16* Domain;
-	UINT32 DomainLength;
+	ULONG DomainLength;
 	UINT16* Password;
-	UINT32 PasswordLength;
+	ULONG PasswordLength;
 	UINT32 Flags;
 } SEC_WINNT_AUTH_IDENTITY_W, *PSEC_WINNT_AUTH_IDENTITY_W;
 
 typedef struct
 {
-	/* TSPasswordCreds */
 	BYTE* User;
-	UINT32 UserLength;
+	ULONG UserLength;
 	BYTE* Domain;
-	UINT32 DomainLength;
+	ULONG DomainLength;
 	BYTE* Password;
-	UINT32 PasswordLength;
+	ULONG PasswordLength;
 	UINT32 Flags;
 } SEC_WINNT_AUTH_IDENTITY_A, *PSEC_WINNT_AUTH_IDENTITY_A;
 
-typedef struct
-{
-	/* TSPasswordCreds */
-	UINT16* User;
-	UINT32 UserLength;
-	UINT16* Domain;
-	UINT32 DomainLength;
-	UINT16* Password;
-	UINT32 PasswordLength;
-	UINT32 Flags;
-} SEC_WINNT_AUTH_IDENTITY;
+// Always define SEC_WINNT_AUTH_IDENTITY to SEC_WINNT_AUTH_IDENTITY_W
+
+#ifdef UNICODE
+#define SEC_WINNT_AUTH_IDENTITY SEC_WINNT_AUTH_IDENTITY_W
+#define PSEC_WINNT_AUTH_IDENTITY PSEC_WINNT_AUTH_IDENTITY_W
+#else
+#define SEC_WINNT_AUTH_IDENTITY SEC_WINNT_AUTH_IDENTITY_W
+#define PSEC_WINNT_AUTH_IDENTITY PSEC_WINNT_AUTH_IDENTITY_W
+#endif
 
 #endif /* _AUTH_IDENTITY_DEFINED */
 
@@ -674,7 +720,7 @@ typedef struct
 	UINT16* Password;
 	UINT32 PasswordLength;
 	UINT32 Flags;
-	BYTE* PackageList;
+	UINT16* PackageList;
 	UINT32 PackageListLength;
 } SEC_WINNT_AUTH_IDENTITY_EXW, *PSEC_WINNT_AUTH_IDENTITY_EXW;
 
@@ -693,12 +739,77 @@ typedef struct
 	UINT32 PackageListLength;
 } SEC_WINNT_AUTH_IDENTITY_EXA, *PSEC_WINNT_AUTH_IDENTITY_EXA;
 
-#endif /* SEC_WINNT_AUTH_IDENTITY_VERSION */
-
-#if defined(__clang__)
-#pragma clang diagnostic pop
+#ifdef UNICODE
+#define SEC_WINNT_AUTH_IDENTITY_EX SEC_WINNT_AUTH_IDENTITY_EXW
+#define PSEC_WINNT_AUTH_IDENTITY_EX PSEC_WINNT_AUTH_IDENTITY_EXW
+#else
+#define SEC_WINNT_AUTH_IDENTITY_EX SEC_WINNT_AUTH_IDENTITY_EXA
+#define PSEC_WINNT_AUTH_IDENTITY_EX PSEC_WINNT_AUTH_IDENTITY_EXA
 #endif
 
+#endif /* SEC_WINNT_AUTH_IDENTITY_VERSION */
+
+#ifndef SEC_WINNT_AUTH_IDENTITY_VERSION_2
+#define SEC_WINNT_AUTH_IDENTITY_VERSION_2 0x201
+
+typedef struct _SEC_WINNT_AUTH_IDENTITY_EX2
+{
+	UINT32 Version;
+	UINT16 cbHeaderLength;
+	UINT32 cbStructureLength;
+	UINT32 UserOffset;
+	UINT16 UserLength;
+	UINT32 DomainOffset;
+	UINT16 DomainLength;
+	UINT32 PackedCredentialsOffset;
+	UINT16 PackedCredentialsLength;
+	UINT32 Flags;
+	UINT32 PackageListOffset;
+	UINT16 PackageListLength;
+} SEC_WINNT_AUTH_IDENTITY_EX2, *PSEC_WINNT_AUTH_IDENTITY_EX2;
+
+#endif /* SEC_WINNT_AUTH_IDENTITY_VERSION_2 */
+
+#ifndef _AUTH_IDENTITY_INFO_DEFINED
+#define _AUTH_IDENTITY_INFO_DEFINED
+
+// https://docs.microsoft.com/en-us/windows/win32/api/sspi/ns-sspi-sec_winnt_auth_identity_info
+
+typedef union _SEC_WINNT_AUTH_IDENTITY_INFO
+{
+	SEC_WINNT_AUTH_IDENTITY_EXW AuthIdExw;
+	SEC_WINNT_AUTH_IDENTITY_EXA AuthIdExa;
+	SEC_WINNT_AUTH_IDENTITY_A AuthId_a;
+	SEC_WINNT_AUTH_IDENTITY_W AuthId_w;
+	SEC_WINNT_AUTH_IDENTITY_EX2 AuthIdEx2;
+} SEC_WINNT_AUTH_IDENTITY_INFO, *PSEC_WINNT_AUTH_IDENTITY_INFO;
+
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_PROCESS_ENCRYPTED 0x10
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SYSTEM_PROTECTED 0x20
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_USER_PROTECTED 0x40
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SYSTEM_ENCRYPTED 0x80
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_RESERVED 0x10000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_NULL_USER 0x20000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_NULL_DOMAIN 0x40000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_ID_PROVIDER 0x80000
+
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_USE_MASK 0xFF000000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_CREDPROV_DO_NOT_SAVE 0x80000000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_SAVE_CRED_CHECKED 0x40000000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_NO_CHECKBOX 0x20000000
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_CREDPROV_DO_NOT_LOAD 0x10000000
+
+#define SEC_WINNT_AUTH_IDENTITY_FLAGS_VALID_SSPIPFC_FLAGS         \
+	(SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_CREDPROV_DO_NOT_SAVE | \
+	 SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_SAVE_CRED_CHECKED |    \
+	 SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_NO_CHECKBOX |          \
+	 SEC_WINNT_AUTH_IDENTITY_FLAGS_SSPIPFC_CREDPROV_DO_NOT_LOAD)
+
+#endif /* _AUTH_IDENTITY_INFO_DEFINED */
+
+WINPR_PRAGMA_DIAG_POP
+
+#if !defined(__MINGW32__)
 typedef struct
 {
 	ULONG_PTR dwLower;
@@ -718,19 +829,60 @@ typedef CtxtHandle* PCtxtHandle;
 	((((PSecHandle)(x))->dwLower != ((ULONG_PTR)((INT_PTR)-1))) && \
 	 (((PSecHandle)(x))->dwUpper != ((ULONG_PTR)((INT_PTR)-1))))
 
-#endif /* !defined(_WIN32) || defined(_UWP) */
+typedef struct
+{
+	ULONG cbBuffer;
+	ULONG BufferType;
+	void* pvBuffer;
+} SecBuffer;
+typedef SecBuffer* PSecBuffer;
 
 typedef struct
 {
-	SEC_WINNT_AUTH_IDENTITY_EXA identityEx;
-	SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
-} SEC_WINNT_AUTH_IDENTITY_WINPRA, *PSEC_WINNT_AUTH_IDENTITY_WINPRA;
+	ULONG ulVersion;
+	ULONG cBuffers;
+	PSecBuffer pBuffers;
+} SecBufferDesc;
+typedef SecBufferDesc* PSecBufferDesc;
+
+#endif /* __MINGW32__ */
+
+#endif /* !defined(_WIN32) || defined(_UWP) || defined(__MINGW32__) */
+
+typedef SECURITY_STATUS (*psSspiNtlmHashCallback)(void* client,
+                                                  const SEC_WINNT_AUTH_IDENTITY* authIdentity,
+                                                  const SecBuffer* ntproofvalue,
+                                                  const BYTE* randkey, const BYTE* mic,
+                                                  const SecBuffer* micvalue, BYTE* ntlmhash);
 
 typedef struct
 {
-	SEC_WINNT_AUTH_IDENTITY_EXW identityEx;
+	char* samFile;
+	psSspiNtlmHashCallback hashCallback;
+	void* hashCallbackArg;
+} SEC_WINPR_NTLM_SETTINGS;
+
+typedef struct
+{
+	char* kdcUrl;
+	char* keytab;
+	char* cache;
+	char* armorCache;
+	char* pkinitX509Anchors;
+	char* pkinitX509Identity;
+	BOOL withPac;
+	INT32 startTime;
+	INT32 renewLifeTime;
+	INT32 lifeTime;
+	BYTE certSha1[20];
+} SEC_WINPR_KERBEROS_SETTINGS;
+
+typedef struct
+{
+	SEC_WINNT_AUTH_IDENTITY_EXW identity;
+	SEC_WINPR_NTLM_SETTINGS* ntlmSettings;
 	SEC_WINPR_KERBEROS_SETTINGS* kerberosSettings;
-} SEC_WINNT_AUTH_IDENTITY_WINPRW, *PSEC_WINNT_AUTH_IDENTITY_WINPRW;
+} SEC_WINNT_AUTH_IDENTITY_WINPR;
 
 #define SECBUFFER_VERSION 0
 
@@ -761,22 +913,6 @@ typedef struct
 #define SECBUFFER_RESERVED 0x60000000
 
 #if !defined(_WIN32) || defined(_UWP)
-
-typedef struct
-{
-	ULONG cbBuffer;
-	ULONG BufferType;
-	void* pvBuffer;
-} SecBuffer;
-typedef SecBuffer* PSecBuffer;
-
-typedef struct
-{
-	ULONG ulVersion;
-	ULONG cBuffers;
-	PSecBuffer pBuffers;
-} SecBufferDesc;
-typedef SecBufferDesc* PSecBufferDesc;
 
 typedef void(SEC_ENTRY* SEC_GET_KEY_FN)(void* Arg, void* Principal, UINT32 KeyVer, void** Key,
                                         SECURITY_STATUS* pStatus);
@@ -958,6 +1094,22 @@ typedef SECURITY_STATUS(SEC_ENTRY* SET_CONTEXT_ATTRIBUTES_FN_W)(PCtxtHandle phCo
 #define SET_CONTEXT_ATTRIBUTES_FN SET_CONTEXT_ATTRIBUTES_FN_A
 #endif
 
+typedef SECURITY_STATUS(SEC_ENTRY* SET_CREDENTIALS_ATTRIBUTES_FN_A)(PCredHandle phCredential,
+                                                                    ULONG ulAttribute,
+                                                                    void* pBuffer, ULONG cbBuffer);
+
+typedef SECURITY_STATUS(SEC_ENTRY* SET_CREDENTIALS_ATTRIBUTES_FN_W)(PCredHandle phCredential,
+                                                                    ULONG ulAttribute,
+                                                                    void* pBuffer, ULONG cbBuffer);
+
+#ifdef UNICODE
+#define SetCredentialsAttributes SetCredentialsAttributesW
+#define SET_CREDENTIALS_ATTRIBUTES_FN SET_CREDENTIALS_ATTRIBUTES_FN_W
+#else
+#define SetCredentialsAttributes SetCredentialsAttributesA
+#define SET_CREDENTIALS_ATTRIBUTES_FN SET_CREDENTIALS_ATTRIBUTES_FN_A
+#endif
+
 #define SECURITY_SUPPORT_PROVIDER_INTERFACE_VERSION \
 	1 /* Interface has all routines through DecryptMessage */
 #define SECURITY_SUPPORT_PROVIDER_INTERFACE_VERSION_2 \
@@ -997,6 +1149,7 @@ typedef struct
 	ENCRYPT_MESSAGE_FN EncryptMessage;
 	DECRYPT_MESSAGE_FN DecryptMessage;
 	SET_CONTEXT_ATTRIBUTES_FN_A SetContextAttributesA;
+	SET_CREDENTIALS_ATTRIBUTES_FN_A SetCredentialsAttributesA;
 } SecurityFunctionTableA;
 typedef SecurityFunctionTableA* PSecurityFunctionTableA;
 
@@ -1030,6 +1183,7 @@ typedef struct
 	ENCRYPT_MESSAGE_FN EncryptMessage;
 	DECRYPT_MESSAGE_FN DecryptMessage;
 	SET_CONTEXT_ATTRIBUTES_FN_W SetContextAttributesW;
+	SET_CREDENTIALS_ATTRIBUTES_FN_W SetCredentialsAttributesW;
 } SecurityFunctionTableW;
 typedef SecurityFunctionTableW* PSecurityFunctionTableW;
 
@@ -1052,6 +1206,8 @@ typedef PSecurityFunctionTableW(SEC_ENTRY* INIT_SECURITY_INTERFACE_W)(void);
 extern "C"
 {
 #endif
+
+#ifdef SSPI_DLL
 
 	/* Package Management */
 
@@ -1148,6 +1304,8 @@ extern "C"
 	                                                    PSecBufferDesc pMessage, ULONG MessageSeqNo,
 	                                                    PULONG pfQOP);
 
+#endif /* SSPI_DLL */
+
 #ifdef __cplusplus
 }
 #endif
@@ -1161,10 +1319,10 @@ extern "C"
 
 	/* Custom API */
 
+/* Extended SECPKG_ATTR IDs begin at 1000 */
 #define SECPKG_ATTR_AUTH_IDENTITY 1001
 #define SECPKG_ATTR_AUTH_PASSWORD 1002
 #define SECPKG_ATTR_AUTH_NTLM_HASH 1003
-#define SECPKG_ATTR_AUTH_NTLM_SAM_FILE 1004
 #define SECPKG_ATTR_AUTH_NTLM_MESSAGE 1100
 #define SECPKG_ATTR_AUTH_NTLM_TIMESTAMP 1101
 #define SECPKG_ATTR_AUTH_NTLM_CLIENT_CHALLENGE 1102
@@ -1173,8 +1331,6 @@ extern "C"
 #define SECPKG_ATTR_AUTH_NTLM_RANDKEY 1105
 #define SECPKG_ATTR_AUTH_NTLM_MIC 1106
 #define SECPKG_ATTR_AUTH_NTLM_MIC_VALUE 1107
-#define SECPKG_ATTR_AUTH_NTLM_HASH_CB 1108
-#define SECPKG_ATTR_AUTH_NTLM_HASH_CB_DATA 1109
 
 	typedef struct
 	{
@@ -1237,11 +1393,26 @@ extern "C"
 	                                              const WCHAR* user, size_t userLen,
 	                                              const WCHAR* domain, size_t domainLen,
 	                                              const WCHAR* password, size_t passwordLen);
-	WINPR_API int sspi_SetAuthIdentityWithUnicodePassword(SEC_WINNT_AUTH_IDENTITY* identity,
-	                                                      const char* user, const char* domain,
-	                                                      LPWSTR password, ULONG passwordLength);
+	WINPR_API UINT32 sspi_GetAuthIdentityVersion(const void* identity);
+	WINPR_API UINT32 sspi_GetAuthIdentityFlags(const void* identity);
+	WINPR_API BOOL sspi_GetAuthIdentityUserDomainW(const void* identity, const WCHAR** pUser,
+	                                               UINT32* pUserLength, const WCHAR** pDomain,
+	                                               UINT32* pDomainLength);
+	WINPR_API BOOL sspi_GetAuthIdentityUserDomainA(const void* identity, const char** pUser,
+	                                               UINT32* pUserLength, const char** pDomain,
+	                                               UINT32* pDomainLength);
+	WINPR_API BOOL sspi_GetAuthIdentityPasswordW(const void* identity, const WCHAR** pPassword,
+	                                             UINT32* pPasswordLength);
+	WINPR_API BOOL sspi_GetAuthIdentityPasswordA(const void* identity, const char** pPassword,
+	                                             UINT32* pPasswordLength);
+	WINPR_API BOOL sspi_CopyAuthIdentityFieldsA(const SEC_WINNT_AUTH_IDENTITY_INFO* identity,
+	                                            char** pUser, char** pDomain, char** pPassword);
+	WINPR_API BOOL sspi_CopyAuthIdentityFieldsW(const SEC_WINNT_AUTH_IDENTITY_INFO* identity,
+	                                            WCHAR** pUser, WCHAR** pDomain, WCHAR** pPassword);
+	WINPR_API BOOL sspi_CopyAuthPackageListA(const SEC_WINNT_AUTH_IDENTITY_INFO* identity,
+	                                         char** pPackageList);
 	WINPR_API int sspi_CopyAuthIdentity(SEC_WINNT_AUTH_IDENTITY* identity,
-	                                    const SEC_WINNT_AUTH_IDENTITY* srcIdentity);
+	                                    const SEC_WINNT_AUTH_IDENTITY_INFO* srcIdentity);
 
 	WINPR_API void sspi_FreeAuthIdentity(SEC_WINNT_AUTH_IDENTITY* identity);
 

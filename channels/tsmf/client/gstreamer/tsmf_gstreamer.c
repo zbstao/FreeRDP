@@ -30,15 +30,9 @@
 #include <unistd.h>
 
 #include <winpr/string.h>
+#include <winpr/platform.h>
 
-#if __clang__
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wparentheses-equality"
-#endif /* __clang__ */
 #include <gst/gst.h>
-#if __clang__
-#pragma clang diagnostic pop
-#endif /* __clang__ */
 
 #include <gst/app/gstappsrc.h>
 #include <gst/app/gstappsink.h>
@@ -46,10 +40,6 @@
 #include "tsmf_constants.h"
 #include "tsmf_decoder.h"
 #include "tsmf_platform.h"
-
-#ifdef HAVE_INTTYPES_H
-#include <inttypes.h>
-#endif
 
 /* 1 second = 10,000,000 100ns units*/
 #define SEEK_TOLERANCE 10 * 1000 * 1000
@@ -418,6 +408,8 @@ static BOOL tsmf_gstreamer_set_format(ITSMFDecoder* decoder, TS_AM_MEDIA_TYPE* m
 			   http://msdn.microsoft.com/en-us/library/dd757806.aspx */
 			if (media_type->ExtraData)
 			{
+				if (media_type->ExtraDataSize < 12)
+					return FALSE;
 				media_type->ExtraData += 12;
 				media_type->ExtraDataSize -= 12;
 			}
@@ -1011,7 +1003,7 @@ static BOOL tsmf_gstreamer_sync(ITSMFDecoder* decoder, void (*cb)(void*), void* 
 	return TRUE;
 }
 
-ITSMFDecoder* gstreamer_freerdp_tsmf_client_decoder_subsystem_entry(void)
+FREERDP_ENTRY_POINT(ITSMFDecoder* gstreamer_freerdp_tsmf_client_decoder_subsystem_entry(void*))
 {
 	TSMFGstreamerDecoder* decoder;
 

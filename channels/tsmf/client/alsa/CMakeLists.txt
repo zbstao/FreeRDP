@@ -17,13 +17,19 @@
 
 define_channel_client_subsystem("tsmf" "alsa" "audio")
 
+find_package(ALSA REQUIRED)
+
 set(${MODULE_PREFIX}_SRCS
-	tsmf_alsa.c)
+	tsmf_alsa.c
+)
+
+set(${MODULE_PREFIX}_LIBS
+    winpr
+    freerdp
+    ${ALSA_LIBRARIES}
+)
 
 include_directories(..)
 include_directories(${ALSA_INCLUDE_DIRS})
 
 add_channel_client_subsystem_library(${MODULE_PREFIX} ${MODULE_NAME} ${CHANNEL_NAME} "" TRUE "")
-
-
-target_link_libraries(${MODULE_NAME} ${ALSA_LIBRARIES} winpr freerdp)

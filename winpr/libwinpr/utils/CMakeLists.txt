@@ -16,16 +16,55 @@
 # limitations under the License.
 
 include(CheckFunctionExists)
+include(CMakeDependentOption)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
-set(${MODULE_PREFIX}_COLLECTIONS_SRCS
+option(WITH_LODEPNG "build WinPR with PNG support" OFF)
+if (WITH_LODEPNG)
+		find_package(lodepng REQUIRED)
+
+		winpr_definition_add(-DWITH_LODEPNG)
+		set(WINPR_WITH_PNG ON CACHE BOOL "build cache")
+
+		winpr_include_directory_add(${lodepng_INCLUDE_DIRS})
+		winpr_library_add_private(${lodepng_LIBRARIES})
+endif()
+
+option(WINPR_UTILS_IMAGE_PNG "Add PNG <--> BMP conversion support to clipboard" OFF)
+if (WINPR_UTILS_IMAGE_PNG)
+	find_package(PNG REQUIRED)
+
+		set(WINPR_WITH_PNG ON CACHE BOOL "build cache")
+	winpr_include_directory_add(${PNG_INCLUDE_DIRS})
+	winpr_library_add_private(${PNG_LIBRARIES})
+endif()
+
+option(WINPR_UTILS_IMAGE_WEBP "Add WebP <--> BMP conversion support to clipboard" OFF)
+if (WINPR_UTILS_IMAGE_WEBP)
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(WEBP libwebp REQUIRED)
+
+	winpr_include_directory_add(${WEBP_INCLUDE_DIRS})
+	winpr_library_add_private(${WEBP_LIBRARIES})
+endif()
+
+option(WINPR_UTILS_IMAGE_JPEG "Add Jpeg <--> BMP conversion support to clipboard" OFF)
+if (WINPR_UTILS_IMAGE_JPEG)
+	find_package(PkgConfig REQUIRED)
+	pkg_check_modules(JPEG libjpeg REQUIRED)
+
+	winpr_include_directory_add(${JPEG_INCLUDE_DIRS})
+	winpr_library_add_private(${JPEG_LIBRARIES})
+endif()
+
+
+set(COLLECTIONS_SRCS
+	collections/Object.c
 	collections/Queue.c
 	collections/Stack.c
 	collections/PubSub.c
-	collections/BipBuffer.c
-	collections/BitStream.c
-	collections/Reference.c
+		collections/BitStream.c
 	collections/ArrayList.c
 	collections/LinkedList.c
 	collections/HashTable.c
@@ -37,39 +76,29 @@ set(${MODULE_PREFIX}_COLLECTIONS_SRCS
 	collections/MessageQueue.c
 	collections/MessagePipe.c)
 
-set(${MODULE_PREFIX}_LODEPNG_SRCS
-	lodepng/lodepng.c
-	lodepng/lodepng.h)
-
-set(${MODULE_PREFIX}_TRIO_SRCS
-	trio/strio.h
-	trio/trio.c
-	trio/trio.h
-	trio/triodef.h
-	trio/trionan.c
-	trio/trionan.h
-	trio/triop.h
-	trio/triostr.c
-	trio/triostr.h)
-
-if (HAVE_SYSLOG_H)
+if (WINPR_HAVE_SYSLOG_H)
 	set(SYSLOG_SRCS
 		wlog/SyslogAppender.c
 		wlog/SyslogAppender.h
 	)
 endif()
 
-if (LIBSYSTEMD_FOUND)
+find_package(libsystemd)
+option(WITH_SYSTEMD "allows to export wLog to systemd journal" ${libsystemd_FOUND})
+if(WITH_LIBSYSTEMD)
+	find_package(libsystemd REQUIRED)
+	set(WINPR_HAVE_JOURNALD_H TRUE)
 	set(JOURNALD_SRCS
 		wlog/JournaldAppender.c
 		wlog/JournaldAppender.h
 	)
-
 	winpr_include_directory_add(${LIBSYSTEMD_INCLUDE_DIR})
 	winpr_library_add_private(${LIBSYSTEMD_LIBRARY})
+else()
+	unset(WINPR_HAVE_JOURNALD_H)
 endif()
 
-set(${MODULE_PREFIX}_WLOG_SRCS
+set(WLOG_SRCS
 	wlog/wlog.c
 	wlog/wlog.h
 	wlog/Layout.c
@@ -98,8 +127,11 @@ set(${MODULE_PREFIX}_WLOG_SRCS
 	${JOURNALD_SRCS}
 	)
 
+set(ASN1_SRCS
+	asn1/asn1.c
+)
 
-set(${MODULE_PREFIX}_SRCS
+set(SRCS
 	ini.c
 	sam.c
 	ntlm.c
@@ -114,19 +146,72 @@ set(${MODULE_PREFIX}_SRCS
 	ssl.c)
 
 if (ANDROID)
+	list(APPEND SRCS android.h android.c)
 	include_directories(${CMAKE_CURRENT_SOURCE_DIR})
+	if (NOT WINPR_HAVE_UNWIND_H)
+		message("[backtrace] android NDK without unwind.h, falling back to corkscrew")
+		set(WINPR_HAVE_CORKSCREW 1)
+	endif()
 endif()
 
-winpr_module_add(${${MODULE_PREFIX}_SRCS}
-	${${MODULE_PREFIX}_COLLECTIONS_SRCS}
-	${${MODULE_PREFIX}_LODEPNG_SRCS}
-	${${MODULE_PREFIX}_TRIO_SRCS}
-	${${MODULE_PREFIX}_WLOG_SRCS})
+if (WINPR_HAVE_CORKSCREW)
+	list(APPEND SRCS
+		corkscrew/debug.c
+		corkscrew/debug.h)
+endif()
+
+if (WIN32)
+	list(APPEND SRCS
+		windows/debug.c
+		windows/debug.h)
+endif()
+
+if (WINPR_HAVE_EXECINFO_H)
+	option(USE_EXECINFO "Use execinfo.h to generate backtraces" ON)
+	if (USE_EXECINFO)
+		winpr_definition_add(-DUSE_EXECINFO)
+		list(APPEND SRCS
+			execinfo/debug.c
+			execinfo/debug.h)
+	endif()
+endif()
+
+if (WINPR_HAVE_UNWIND_H)
+	option(USE_UNWIND "Use unwind.h to generate backtraces" ON)
+	if (USE_UNWIND)
+		winpr_definition_add(-DUSE_UNWIND)
+		list(APPEND SRCS
+			unwind/debug.c
+			unwind/debug.h)
+	endif()
+endif()
+
+include(JsonDetect)
+if (NOT WITH_JSON_DISABLED)
+	if (JSONC_FOUND AND NOT WITH_CJSON_REQUIRED)
+		winpr_library_add_private(${JSONC_LIBRARIES})
+		winpr_include_directory_add(${JSONC_INCLUDE_DIRS})
+		winpr_definition_add(-DWITH_JSONC)
+		set(WITH_WINPR_JSON ON CACHE INTERNAL "internal")
+	elseif (CJSON_FOUND)
+		winpr_library_add_private(${CJSON_LIBRARIES})
+		winpr_include_directory_add(${CJSON_INCLUDE_DIRS})
+		winpr_definition_add(-DWITH_CJSON)
+		set(WITH_WINPR_JSON ON CACHE INTERNAL "internal")
+	endif()
+endif()
+
+winpr_module_add(json/json.c)
+
+winpr_module_add(${SRCS}
+	${COLLECTIONS_SRCS}
+	${WLOG_SRCS}
+	${ASN1_SRCS}
+)
 
 winpr_include_directory_add(
-	"lodepng"
-	"trio"
-	".")
+	"."
+)
 
 if(OPENSSL_FOUND)
 	winpr_include_directory_add(${OPENSSL_INCLUDE_DIR})

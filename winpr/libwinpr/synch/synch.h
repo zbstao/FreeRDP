@@ -50,7 +50,7 @@
 
 struct winpr_mutex
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 	char* name;
 	pthread_mutex_t mutex;
 };
@@ -58,14 +58,14 @@ typedef struct winpr_mutex WINPR_MUTEX;
 
 struct winpr_semaphore
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
 	int pipe_fd[2];
 	winpr_sem_t* sem;
 };
 typedef struct winpr_semaphore WINPR_SEMAPHORE;
 
-#ifdef HAVE_SYS_TIMERFD_H
+#ifdef WINPR_HAVE_SYS_TIMERFD_H
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -80,12 +80,12 @@ typedef struct winpr_semaphore WINPR_SEMAPHORE;
 #define TIMER_IMPL_DISPATCH
 #include <dispatch/dispatch.h>
 #else
-#error missing timer implementation
+#warning missing timer implementation
 #endif
 
 struct winpr_timer
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
 	int fd;
 	BOOL bInit;
@@ -120,7 +120,7 @@ typedef struct winpr_timer_queue_timer WINPR_TIMER_QUEUE_TIMER;
 
 struct winpr_timer_queue
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
 	pthread_t thread;
 	pthread_attr_t attr;
@@ -137,7 +137,7 @@ typedef struct winpr_timer_queue WINPR_TIMER_QUEUE;
 
 struct winpr_timer_queue_timer
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
 	ULONG Flags;
 	DWORD DueTime;

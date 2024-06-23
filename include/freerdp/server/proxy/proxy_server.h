@@ -24,12 +24,19 @@
 #include <freerdp/server/proxy/proxy_config.h>
 #include <freerdp/server/proxy/proxy_modules_api.h>
 
-typedef struct proxy_server proxyServer;
-
 #ifdef __cplusplus
 extern "C"
 {
 #endif
+
+	typedef struct proxy_server proxyServer;
+
+	/**
+	 * @brief pf_server_free Cleans up a (stopped) proxy server instance.
+	 *
+	 * @param server The proxy server to clean up. Might be NULL.
+	 */
+	FREERDP_API void pf_server_free(proxyServer* server);
 
 	/**
 	 * @brief pf_server_new Creates a new proxy server instance
@@ -38,14 +45,8 @@ extern "C"
 	 *
 	 * @return A new proxy server instance or NULL on failure.
 	 */
+	WINPR_ATTR_MALLOC(pf_server_free, 1)
 	FREERDP_API proxyServer* pf_server_new(const proxyConfig* config);
-
-	/**
-	 * @brief pf_server_free Cleans up a (stopped) proxy server instance.
-	 *
-	 * @param server The proxy server to clean up. Might be NULL.
-	 */
-	FREERDP_API void pf_server_free(proxyServer* server);
 
 	/**
 	 * @brief pf_server_add_module Allows registering proxy modules that are

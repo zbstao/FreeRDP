@@ -35,9 +35,9 @@ extern "C"
 {
 #endif
 
-	WINPR_API void winpr_HexDump(const char* tag, UINT32 lvl, const BYTE* data, size_t length);
-	WINPR_API void winpr_HexLogDump(wLog* log, UINT32 lvl, const BYTE* data, size_t length);
-	WINPR_API void winpr_CArrayDump(const char* tag, UINT32 lvl, const BYTE* data, size_t length,
+	WINPR_API void winpr_HexDump(const char* tag, UINT32 lvl, const void* data, size_t length);
+	WINPR_API void winpr_HexLogDump(wLog* log, UINT32 lvl, const void* data, size_t length);
+	WINPR_API void winpr_CArrayDump(const char* tag, UINT32 lvl, const void* data, size_t length,
 	                                size_t width);
 
 	WINPR_API char* winpr_BinToHexString(const BYTE* data, size_t length, BOOL space);
@@ -46,10 +46,6 @@ extern "C"
 
 	WINPR_API size_t winpr_HexStringToBinBuffer(const char* str, size_t strLength, BYTE* data,
 	                                            size_t dataLength);
-
-	WINPR_API int wprintfx(const char* fmt, ...);
-	WINPR_API int wvprintfx(const char* fmt, va_list args);
-	WINPR_API int wvsnprintfx(char* buffer, size_t bufferSize, const char* fmt, va_list args);
 
 #ifdef __cplusplus
 }

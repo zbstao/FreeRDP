@@ -25,7 +25,7 @@
 #include <winpr/path.h>
 #include <winpr/file.h>
 
-#ifdef HAVE_UNISTD_H
+#ifdef WINPR_HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
@@ -48,15 +48,7 @@ static HANDLE_CREATOR _NamedPipeClientHandleCreator;
 
 static BOOL NamedPipeClientIsHandled(HANDLE handle)
 {
-	WINPR_NAMED_PIPE* pFile = (WINPR_NAMED_PIPE*)handle;
-
-	if (!pFile || (pFile->Type != HANDLE_TYPE_NAMED_PIPE) || (pFile == INVALID_HANDLE_VALUE))
-	{
-		SetLastError(ERROR_INVALID_HANDLE);
-		return FALSE;
-	}
-
-	return TRUE;
+	return WINPR_HANDLE_IS_HANDLED(handle, HANDLE_TYPE_NAMED_PIPE, TRUE);
 }
 
 static BOOL NamedPipeClientCloseHandle(HANDLE handle)
@@ -131,15 +123,15 @@ static HANDLE NamedPipeClientCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAcces
                                          DWORD dwCreationDisposition, DWORD dwFlagsAndAttributes,
                                          HANDLE hTemplateFile)
 {
-	char* name;
-	int status;
-	HANDLE hNamedPipe;
-	struct sockaddr_un s;
-	WINPR_NAMED_PIPE* pNamedPipe;
+	char* name = NULL;
+	int status = 0;
+	HANDLE hNamedPipe = NULL;
+	struct sockaddr_un s = { 0 };
+	WINPR_NAMED_PIPE* pNamedPipe = NULL;
 
 	if (dwFlagsAndAttributes & FILE_FLAG_OVERLAPPED)
 	{
-		WLog_ERR(TAG, "WinPR %s does not support the FILE_FLAG_OVERLAPPED flag", __FUNCTION__);
+		WLog_ERR(TAG, "WinPR does not support the FILE_FLAG_OVERLAPPED flag");
 		SetLastError(ERROR_NOT_SUPPORTED);
 		return INVALID_HANDLE_VALUE;
 	}
@@ -204,11 +196,10 @@ static HANDLE NamedPipeClientCreateFileA(LPCSTR lpFileName, DWORD dwDesiredAcces
 	pNamedPipe->clientfd = socket(PF_LOCAL, SOCK_STREAM, 0);
 	pNamedPipe->serverfd = -1;
 	pNamedPipe->ServerMode = FALSE;
-	ZeroMemory(&s, sizeof(struct sockaddr_un));
 	s.sun_family = AF_UNIX;
 	sprintf_s(s.sun_path, ARRAYSIZE(s.sun_path), "%s", pNamedPipe->lpFilePath);
 	status = connect(pNamedPipe->clientfd, (struct sockaddr*)&s, sizeof(struct sockaddr_un));
-	pNamedPipe->ops = &ops;
+	pNamedPipe->common.ops = &ops;
 
 	if (status != 0)
 	{
@@ -258,7 +249,7 @@ BOOL IsNamedPipeFileNameA(LPCSTR lpName)
 
 char* GetNamedPipeNameWithoutPrefixA(LPCSTR lpName)
 {
-	char* lpFileName;
+	char* lpFileName = NULL;
 
 	if (!lpName)
 		return NULL;
@@ -270,10 +261,10 @@ char* GetNamedPipeNameWithoutPrefixA(LPCSTR lpName)
 	return lpFileName;
 }
 
-char* GetNamedPipeUnixDomainSocketBaseFilePathA()
+char* GetNamedPipeUnixDomainSocketBaseFilePathA(void)
 {
-	char* lpTempPath;
-	char* lpPipePath;
+	char* lpTempPath = NULL;
+	char* lpPipePath = NULL;
 	lpTempPath = GetKnownPath(KNOWN_PATH_TEMP);
 
 	if (!lpTempPath)
@@ -286,9 +277,9 @@ char* GetNamedPipeUnixDomainSocketBaseFilePathA()
 
 char* GetNamedPipeUnixDomainSocketFilePathA(LPCSTR lpName)
 {
-	char* lpPipePath;
-	char* lpFileName;
-	char* lpFilePath;
+	char* lpPipePath = NULL;
+	char* lpFileName = NULL;
+	char* lpFilePath = NULL;
 	lpPipePath = GetNamedPipeUnixDomainSocketBaseFilePathA();
 	lpFileName = GetNamedPipeNameWithoutPrefixA(lpName);
 	lpFilePath = GetCombinedPath(lpPipePath, (char*)lpFileName);
@@ -300,11 +291,10 @@ char* GetNamedPipeUnixDomainSocketFilePathA(LPCSTR lpName)
 int GetNamePipeFileDescriptor(HANDLE hNamedPipe)
 {
 #ifndef _WIN32
-	int fd;
-	WINPR_NAMED_PIPE* pNamedPipe;
-	pNamedPipe = (WINPR_NAMED_PIPE*)hNamedPipe;
+	int fd = 0;
+	WINPR_NAMED_PIPE* pNamedPipe = (WINPR_NAMED_PIPE*)hNamedPipe;
 
-	if (!pNamedPipe || pNamedPipe->Type != HANDLE_TYPE_NAMED_PIPE)
+	if (!NamedPipeClientIsHandled(hNamedPipe))
 		return -1;
 
 	fd = (pNamedPipe->ServerMode) ? pNamedPipe->serverfd : pNamedPipe->clientfd;

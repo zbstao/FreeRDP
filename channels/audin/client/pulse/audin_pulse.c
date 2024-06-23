@@ -33,6 +33,7 @@
 
 #include <freerdp/types.h>
 #include <freerdp/addin.h>
+#include <freerdp/freerdp.h>
 #include <freerdp/codec/audio.h>
 #include <freerdp/client/audin.h>
 
@@ -104,9 +105,8 @@ static const char* pulse_stream_state_string(pa_stream_state_t state)
 
 static void audin_pulse_context_state_callback(pa_context* context, void* userdata)
 {
-	pa_context_state_t state;
 	AudinPulseDevice* pulse = (AudinPulseDevice*)userdata;
-	state = pa_context_get_state(context);
+	pa_context_state_t state = pa_context_get_state(context);
 
 	WLog_Print(pulse->log, WLOG_DEBUG, "context state %s", pulse_context_state_string(state));
 	switch (state)
@@ -132,7 +132,7 @@ static void audin_pulse_context_state_callback(pa_context* context, void* userda
  */
 static UINT audin_pulse_connect(IAudinDevice* device)
 {
-	pa_context_state_t state;
+	pa_context_state_t state = PA_CONTEXT_FAILED;
 	AudinPulseDevice* pulse = (AudinPulseDevice*)device;
 
 	if (!pulse->context)
@@ -234,17 +234,6 @@ static BOOL audin_pulse_format_supported(IAudinDevice* device, const AUDIO_FORMA
 
 			break;
 
-		case WAVE_FORMAT_ALAW:  /* A-LAW */
-		case WAVE_FORMAT_MULAW: /* U-LAW */
-			if (format->cbSize == 0 && (format->nSamplesPerSec <= PA_RATE_MAX) &&
-			    (format->wBitsPerSample == 8) &&
-			    (format->nChannels >= 1 && format->nChannels <= PA_CHANNELS_MAX))
-			{
-				return TRUE;
-			}
-
-			break;
-
 		default:
 			return FALSE;
 	}
@@ -313,9 +302,8 @@ static UINT audin_pulse_set_format(IAudinDevice* device, const AUDIO_FORMAT* for
 
 static void audin_pulse_stream_state_callback(pa_stream* stream, void* userdata)
 {
-	pa_stream_state_t state;
 	AudinPulseDevice* pulse = (AudinPulseDevice*)userdata;
-	state = pa_stream_get_state(stream);
+	pa_stream_state_t state = pa_stream_get_state(stream);
 
 	WLog_Print(pulse->log, WLOG_DEBUG, "stream state %s", pulse_stream_state_string(state));
 	switch (state)
@@ -338,7 +326,7 @@ static void audin_pulse_stream_state_callback(pa_stream* stream, void* userdata)
 
 static void audin_pulse_stream_request_callback(pa_stream* stream, size_t length, void* userdata)
 {
-	const void* data;
+	const void* data = NULL;
 	AudinPulseDevice* pulse = (AudinPulseDevice*)userdata;
 	UINT error = CHANNEL_RC_OK;
 	pa_stream_peek(stream, &data, &length);
@@ -383,7 +371,7 @@ static UINT audin_pulse_close(IAudinDevice* device)
  */
 static UINT audin_pulse_open(IAudinDevice* device, AudinReceive receive, void* user_data)
 {
-	pa_stream_state_t state;
+	pa_stream_state_t state = PA_STREAM_FAILED;
 	pa_buffer_attr buffer_attr = { 0 };
 	AudinPulseDevice* pulse = (AudinPulseDevice*)device;
 
@@ -464,9 +452,9 @@ static UINT audin_pulse_open(IAudinDevice* device, AudinReceive receive, void* u
  */
 static UINT audin_pulse_parse_addin_args(AudinPulseDevice* device, const ADDIN_ARGV* args)
 {
-	int status;
-	DWORD flags;
-	const COMMAND_LINE_ARGUMENT_A* arg;
+	int status = 0;
+	DWORD flags = 0;
+	const COMMAND_LINE_ARGUMENT_A* arg = NULL;
 	AudinPulseDevice* pulse = (AudinPulseDevice*)device;
 	COMMAND_LINE_ARGUMENT_A audin_pulse_args[] = { { "dev", COMMAND_LINE_VALUE_REQUIRED, "<device>",
 		                                             NULL, NULL, -1, NULL, "audio device name" },
@@ -508,11 +496,12 @@ static UINT audin_pulse_parse_addin_args(AudinPulseDevice* device, const ADDIN_A
  *
  * @return 0 on success, otherwise a Win32 error code
  */
-UINT pulse_freerdp_audin_client_subsystem_entry(PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints)
+FREERDP_ENTRY_POINT(UINT pulse_freerdp_audin_client_subsystem_entry(
+    PFREERDP_AUDIN_DEVICE_ENTRY_POINTS pEntryPoints))
 {
-	const ADDIN_ARGV* args;
-	AudinPulseDevice* pulse;
-	UINT error;
+	const ADDIN_ARGV* args = NULL;
+	AudinPulseDevice* pulse = NULL;
+	UINT error = 0;
 	pulse = (AudinPulseDevice*)calloc(1, sizeof(AudinPulseDevice));
 
 	if (!pulse)

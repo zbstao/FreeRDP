@@ -28,6 +28,14 @@
 
 #include <winpr/thread.h>
 
+#ifndef MIN
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#endif
+
+#ifndef MAX
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#endif
+
 /**
  * api-ms-win-core-processthreads-l1-1-1.dll
  *
@@ -73,11 +81,12 @@
 #include <winpr/crt.h>
 #include <winpr/platform.h>
 
-#ifdef HAVE_UNISTD_H
+#include <string.h>
+#ifdef WINPR_HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
-#ifdef HAVE_SYS_EVENTFD_H
+#ifdef WINPR_HAVE_SYS_EVENTFD_H
 #include <sys/eventfd.h>
 #endif
 
@@ -106,15 +115,7 @@ static void cleanup_handle(void* obj);
 
 static BOOL ThreadIsHandled(HANDLE handle)
 {
-	WINPR_THREAD* pThread = (WINPR_THREAD*)handle;
-
-	if (!pThread || (pThread->Type != HANDLE_TYPE_THREAD))
-	{
-		SetLastError(ERROR_INVALID_HANDLE);
-		return FALSE;
-	}
-
-	return TRUE;
+	return WINPR_HANDLE_IS_HANDLED(handle, HANDLE_TYPE_THREAD, FALSE);
 }
 
 static int ThreadGetFd(HANDLE handle)
@@ -127,35 +128,220 @@ static int ThreadGetFd(HANDLE handle)
 	return pThread->event.fds[0];
 }
 
+#define run_mutex_init(fkt, mux, arg) run_mutex_init_(fkt, #fkt, mux, arg)
+static BOOL run_mutex_init_(int (*fkt)(pthread_mutex_t*, const pthread_mutexattr_t*),
+                            const char* name, pthread_mutex_t* mutex,
+                            const pthread_mutexattr_t* mutexattr)
+{
+	int rc = 0;
+
+	WINPR_ASSERT(fkt);
+	WINPR_ASSERT(mutex);
+
+	rc = fkt(mutex, mutexattr);
+	if (rc != 0)
+	{
+		char ebuffer[256] = { 0 };
+		WLog_WARN(TAG, "[%s] failed with [%s]", name, winpr_strerror(rc, ebuffer, sizeof(ebuffer)));
+	}
+	return rc == 0;
+}
+
+#define run_mutex_fkt(fkt, mux) run_mutex_fkt_(fkt, #fkt, mux)
+static BOOL run_mutex_fkt_(int (*fkt)(pthread_mutex_t* mux), const char* name,
+                           pthread_mutex_t* mutex)
+{
+	int rc = 0;
+
+	WINPR_ASSERT(fkt);
+	WINPR_ASSERT(mutex);
+
+	rc = fkt(mutex);
+	if (rc != 0)
+	{
+		char ebuffer[256] = { 0 };
+		WLog_WARN(TAG, "[%s] failed with [%s]", name, winpr_strerror(rc, ebuffer, sizeof(ebuffer)));
+	}
+	return rc == 0;
+}
+
+#define run_cond_init(fkt, cond, arg) run_cond_init_(fkt, #fkt, cond, arg)
+static BOOL run_cond_init_(int (*fkt)(pthread_cond_t*, const pthread_condattr_t*), const char* name,
+                           pthread_cond_t* condition, const pthread_condattr_t* conditionattr)
+{
+	int rc = 0;
+
+	WINPR_ASSERT(fkt);
+	WINPR_ASSERT(condition);
+
+	rc = fkt(condition, conditionattr);
+	if (rc != 0)
+	{
+		char ebuffer[256] = { 0 };
+		WLog_WARN(TAG, "[%s] failed with [%s]", name, winpr_strerror(rc, ebuffer, sizeof(ebuffer)));
+	}
+	return rc == 0;
+}
+
+#define run_cond_fkt(fkt, cond) run_cond_fkt_(fkt, #fkt, cond)
+static BOOL run_cond_fkt_(int (*fkt)(pthread_cond_t* mux), const char* name,
+                          pthread_cond_t* condition)
+{
+	int rc = 0;
+
+	WINPR_ASSERT(fkt);
+	WINPR_ASSERT(condition);
+
+	rc = fkt(condition);
+	if (rc != 0)
+	{
+		char ebuffer[256] = { 0 };
+		WLog_WARN(TAG, "[%s] failed with [%s]", name, winpr_strerror(rc, ebuffer, sizeof(ebuffer)));
+	}
+	return rc == 0;
+}
+
+static int pthread_mutex_checked_unlock(pthread_mutex_t* mutex)
+{
+	WINPR_ASSERT(mutex);
+	WINPR_ASSERT(pthread_mutex_trylock(mutex) == EBUSY);
+	return pthread_mutex_unlock(mutex);
+}
+
+static BOOL mux_condition_bundle_init(mux_condition_bundle* bundle)
+{
+	WINPR_ASSERT(bundle);
+
+	bundle->val = FALSE;
+	if (!run_mutex_init(pthread_mutex_init, &bundle->mux, NULL))
+		return FALSE;
+
+	if (!run_cond_init(pthread_cond_init, &bundle->cond, NULL))
+		return FALSE;
+	return TRUE;
+}
+
+static void mux_condition_bundle_uninit(mux_condition_bundle* bundle)
+{
+	mux_condition_bundle empty = { 0 };
+
+	WINPR_ASSERT(bundle);
+
+	run_cond_fkt(pthread_cond_destroy, &bundle->cond);
+	run_mutex_fkt(pthread_mutex_destroy, &bundle->mux);
+	*bundle = empty;
+}
+
+static BOOL mux_condition_bundle_signal(mux_condition_bundle* bundle)
+{
+	BOOL rc = TRUE;
+	WINPR_ASSERT(bundle);
+
+	if (!run_mutex_fkt(pthread_mutex_lock, &bundle->mux))
+		return FALSE;
+	bundle->val = TRUE;
+	if (!run_cond_fkt(pthread_cond_signal, &bundle->cond))
+		rc = FALSE;
+	if (!run_mutex_fkt(pthread_mutex_checked_unlock, &bundle->mux))
+		rc = FALSE;
+	return rc;
+}
+
+static BOOL mux_condition_bundle_lock(mux_condition_bundle* bundle)
+{
+	WINPR_ASSERT(bundle);
+	return run_mutex_fkt(pthread_mutex_lock, &bundle->mux);
+}
+
+static BOOL mux_condition_bundle_unlock(mux_condition_bundle* bundle)
+{
+	WINPR_ASSERT(bundle);
+	return run_mutex_fkt(pthread_mutex_checked_unlock, &bundle->mux);
+}
+
+static BOOL mux_condition_bundle_wait(mux_condition_bundle* bundle, const char* name)
+{
+	BOOL rc = FALSE;
+
+	WINPR_ASSERT(bundle);
+	WINPR_ASSERT(name);
+	WINPR_ASSERT(pthread_mutex_trylock(&bundle->mux) == EBUSY);
+
+	while (!bundle->val)
+	{
+		int r = pthread_cond_wait(&bundle->cond, &bundle->mux);
+		if (r != 0)
+		{
+			char ebuffer[256] = { 0 };
+			WLog_ERR(TAG, "failed to wait for %s [%s]", name,
+			         winpr_strerror(r, ebuffer, sizeof(ebuffer)));
+			switch (r)
+			{
+				case ENOTRECOVERABLE:
+				case EPERM:
+				case ETIMEDOUT:
+				case EINVAL:
+					goto fail;
+
+				default:
+					break;
+			}
+		}
+	}
+
+	rc = bundle->val;
+
+fail:
+	return rc;
+}
+
+static BOOL signal_thread_ready(WINPR_THREAD* thread)
+{
+	WINPR_ASSERT(thread);
+
+	return mux_condition_bundle_signal(&thread->isCreated);
+}
+
+static BOOL signal_thread_is_running(WINPR_THREAD* thread)
+{
+	WINPR_ASSERT(thread);
+
+	return mux_condition_bundle_signal(&thread->isRunning);
+}
+
 static DWORD ThreadCleanupHandle(HANDLE handle)
 {
+	DWORD status = WAIT_FAILED;
 	WINPR_THREAD* thread = (WINPR_THREAD*)handle;
 
 	if (!ThreadIsHandled(handle))
 		return WAIT_FAILED;
 
-	if (pthread_mutex_lock(&thread->mutex))
+	if (!run_mutex_fkt(pthread_mutex_lock, &thread->mutex))
 		return WAIT_FAILED;
 
 	if (!thread->joined)
 	{
-		int status;
-		status = pthread_join(thread->thread, NULL);
+		int rc = pthread_join(thread->thread, NULL);
 
-		if (status != 0)
+		if (rc != 0)
 		{
-			WLog_ERR(TAG, "pthread_join failure: [%d] %s", status, strerror(status));
-			pthread_mutex_unlock(&thread->mutex);
-			return WAIT_FAILED;
+			char ebuffer[256] = { 0 };
+			WLog_ERR(TAG, "pthread_join failure: [%d] %s", rc,
+			         winpr_strerror(rc, ebuffer, sizeof(ebuffer)));
+			goto fail;
 		}
 		else
 			thread->joined = TRUE;
 	}
 
-	if (pthread_mutex_unlock(&thread->mutex))
+	status = WAIT_OBJECT_0;
+
+fail:
+	if (!run_mutex_fkt(pthread_mutex_checked_unlock, &thread->mutex))
 		return WAIT_FAILED;
 
-	return WAIT_OBJECT_0;
+	return status;
 }
 
 static HANDLE_OPS ops = { ThreadIsHandled,
@@ -177,18 +363,19 @@ static HANDLE_OPS ops = { ThreadIsHandled,
 	                      NULL,
 	                      NULL,
 	                      NULL,
+	                      NULL,
 	                      NULL };
 
 static void dump_thread(WINPR_THREAD* thread)
 {
 #if defined(WITH_DEBUG_THREADS)
 	void* stack = winpr_backtrace(20);
-	char** msg;
-	size_t used, i;
+	char** msg = NULL;
+	size_t used = 0;
 	WLog_DBG(TAG, "Called from:");
 	msg = winpr_backtrace_symbols(stack, &used);
 
-	for (i = 0; i < used; i++)
+	for (size_t i = 0; i < used; i++)
 		WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 
 	free(msg);
@@ -196,7 +383,7 @@ static void dump_thread(WINPR_THREAD* thread)
 	WLog_DBG(TAG, "Thread handle created still not closed!");
 	msg = winpr_backtrace_symbols(thread->create_stack, &used);
 
-	for (i = 0; i < used; i++)
+	for (size_t i = 0; i < used; i++)
 		WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 
 	free(msg);
@@ -214,7 +401,7 @@ static void dump_thread(WINPR_THREAD* thread)
 		WLog_DBG(TAG, "Thread exited at:");
 		msg = winpr_backtrace_symbols(thread->exit_stack, &used);
 
-		for (i = 0; i < used; i++)
+		for (size_t i = 0; i < used; i++)
 			WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 
 		free(msg);
@@ -260,7 +447,7 @@ static BOOL initializeThreads(PINIT_ONCE InitOnce, PVOID Parameter, PVOID* Conte
 		goto out;
 	}
 
-	mainThread.Type = HANDLE_TYPE_THREAD;
+	mainThread.common.Type = HANDLE_TYPE_THREAD;
 	mainThreadId = pthread_self();
 
 	currentThreadTlsIndex = TlsAlloc();
@@ -285,15 +472,46 @@ out:
 	return TRUE;
 }
 
+static BOOL signal_and_wait_for_ready(WINPR_THREAD* thread)
+{
+	BOOL res = FALSE;
+
+	WINPR_ASSERT(thread);
+
+	if (!mux_condition_bundle_lock(&thread->isRunning))
+		return FALSE;
+
+	if (!signal_thread_ready(thread))
+		goto fail;
+
+	if (!mux_condition_bundle_wait(&thread->isRunning, "threadIsRunning"))
+		goto fail;
+
+#if defined(WITH_THREAD_LIST)
+	if (!ListDictionary_Contains(thread_list, &thread->thread))
+	{
+		WLog_ERR(TAG, "Thread not in thread_list, startup failed!");
+		goto fail;
+	}
+#endif
+
+	res = TRUE;
+
+fail:
+	if (!mux_condition_bundle_unlock(&thread->isRunning))
+		return FALSE;
+
+	return res;
+}
+
 /* Thread launcher function responsible for registering
  * cleanup handlers and calling pthread_exit, if not done
  * in thread function. */
 static void* thread_launcher(void* arg)
 {
-	struct timespec waittime = { 1, 0 };
 	DWORD rc = 0;
 	WINPR_THREAD* thread = (WINPR_THREAD*)arg;
-	LPTHREAD_START_ROUTINE fkt;
+	LPTHREAD_START_ROUTINE fkt = NULL;
 
 	if (!thread)
 	{
@@ -313,27 +531,7 @@ static void* thread_launcher(void* arg)
 		goto exit;
 	}
 
-	if (pthread_mutex_lock(&thread->threadIsReadyMutex))
-		goto exit;
-
-	if (pthread_cond_signal(&thread->threadReady) != 0)
-	{
-		WLog_ERR(TAG, "The thread could not be made ready");
-		pthread_mutex_unlock(&thread->threadIsReadyMutex);
-		goto exit;
-	}
-	pthread_cond_timedwait(&thread->threadIsReady, &thread->threadIsReadyMutex, &waittime);
-
-#if defined(WITH_THREAD_LIST)
-	if (!ListDictionary_Contains(thread_list, &thread->thread))
-	{
-		WLog_ERR(TAG, "Thread not in thread_list, startup failed!");
-		pthread_mutex_unlock(&thread->threadIsReadyMutex);
-		goto exit;
-	}
-#endif
-
-	if (pthread_mutex_unlock(&thread->threadIsReadyMutex))
+	if (!signal_and_wait_for_ready(thread))
 		goto exit;
 
 	rc = fkt(thread->lpParameter);
@@ -348,7 +546,8 @@ exit:
 
 		set_event(thread);
 
-		pthread_cond_signal(&thread->threadReady);
+		signal_thread_ready(thread);
+
 		if (thread->detached || !thread->started)
 			cleanup_handle(thread);
 	}
@@ -358,8 +557,14 @@ exit:
 
 static BOOL winpr_StartThread(WINPR_THREAD* thread)
 {
-	struct timespec waittime = { 1, 0 };
-	pthread_attr_t attr;
+	BOOL rc = FALSE;
+	BOOL locked = FALSE;
+	pthread_attr_t attr = { 0 };
+
+	if (!mux_condition_bundle_lock(&thread->isCreated))
+		return FALSE;
+	locked = TRUE;
+
 	pthread_attr_init(&attr);
 	pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
@@ -369,48 +574,105 @@ static BOOL winpr_StartThread(WINPR_THREAD* thread)
 	thread->started = TRUE;
 	reset_event(thread);
 
-	if (pthread_mutex_lock(&thread->threadReadyMutex))
-		goto error;
-
 #if defined(WITH_THREAD_LIST)
 	if (!ListDictionary_Add(thread_list, &thread->thread, thread))
 	{
 		WLog_ERR(TAG, "failed to add the thread to the thread list");
-		pthread_mutex_unlock(&thread->threadReadyMutex);
 		goto error;
 	}
 #endif
 
 	if (pthread_create(&thread->thread, &attr, thread_launcher, thread))
-	{
-		pthread_mutex_unlock(&thread->threadReadyMutex);
-		goto error;
-	}
-
-	pthread_cond_timedwait(&thread->threadReady, &thread->threadReadyMutex, &waittime);
-
-	if (pthread_mutex_unlock(&thread->threadReadyMutex))
 		goto error;
 
-	if (pthread_cond_signal(&thread->threadIsReady) != 0)
+	if (!mux_condition_bundle_wait(&thread->isCreated, "threadIsCreated"))
+		goto error;
+
+	locked = FALSE;
+	if (!mux_condition_bundle_unlock(&thread->isCreated))
+		goto error;
+
+	if (!signal_thread_is_running(thread))
 	{
 		WLog_ERR(TAG, "failed to signal the thread was ready");
 		goto error;
 	}
 
-	pthread_attr_destroy(&attr);
-	dump_thread(thread);
-	return TRUE;
+	rc = TRUE;
 error:
+	if (locked)
+	{
+		if (!mux_condition_bundle_unlock(&thread->isCreated))
+			rc = FALSE;
+	}
+
 	pthread_attr_destroy(&attr);
-	return FALSE;
+
+	if (rc)
+		dump_thread(thread);
+
+	return rc;
+}
+
+BOOL SetThreadPriority(HANDLE hThread, int nPriority)
+{
+	ULONG Type = 0;
+	WINPR_HANDLE* Object = NULL;
+
+	if (!winpr_Handle_GetInfo(hThread, &Type, &Object) || Object->Type != HANDLE_TYPE_THREAD)
+		return FALSE;
+
+	WINPR_THREAD* thread = (WINPR_THREAD*)Object;
+
+	const int min = 19;
+	const int max = 0;
+	const int diff = (max - min);
+	const int normal = min + diff / 2;
+	const int off = MIN(1, diff / 4);
+	int sched_priority = -1;
+
+	switch (nPriority & ~(THREAD_MODE_BACKGROUND_BEGIN | THREAD_MODE_BACKGROUND_END))
+	{
+		case THREAD_PRIORITY_ABOVE_NORMAL:
+			sched_priority = MIN(normal + off, max);
+			break;
+		case THREAD_PRIORITY_BELOW_NORMAL:
+			sched_priority = MAX(normal - off, min);
+			break;
+		case THREAD_PRIORITY_HIGHEST:
+			sched_priority = max;
+			break;
+		case THREAD_PRIORITY_IDLE:
+			sched_priority = min;
+			break;
+		case THREAD_PRIORITY_LOWEST:
+			sched_priority = min;
+			break;
+		case THREAD_PRIORITY_TIME_CRITICAL:
+			sched_priority = max;
+			break;
+		default:
+		case THREAD_PRIORITY_NORMAL:
+			sched_priority = normal;
+			break;
+	}
+#if defined(_POSIX_C_SOURCE) && (_POSIX_C_SOURCE >= 200809L) && defined(PTHREAD_SETSCHEDPRIO)
+	const int rc = pthread_setschedprio(thread->thread, sched_priority);
+	if (rc != 0)
+		WLog_ERR(TAG, "pthread_setschedprio(%d) %s [%d]", sched_priority, strerror(rc), rc);
+	return rc == 0;
+#else
+	WLog_WARN(TAG, "pthread_setschedprio(%d) not implemented, requires POSIX 2008 or later",
+	          sched_priority);
+	return TRUE;
+#endif
 }
 
 HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize,
                     LPTHREAD_START_ROUTINE lpStartAddress, LPVOID lpParameter,
                     DWORD dwCreationFlags, LPDWORD lpThreadId)
 {
-	HANDLE handle;
+	HANDLE handle = NULL;
 	WINPR_THREAD* thread = (WINPR_THREAD*)calloc(1, sizeof(WINPR_THREAD));
 
 	if (!thread)
@@ -420,7 +682,7 @@ HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize
 	thread->lpParameter = lpParameter;
 	thread->lpStartAddress = lpStartAddress;
 	thread->lpThreadAttributes = lpThreadAttributes;
-	thread->ops = &ops;
+	thread->common.ops = &ops;
 #if defined(WITH_DEBUG_THREADS)
 	thread->create_stack = winpr_backtrace(20);
 	dump_thread(thread);
@@ -432,7 +694,7 @@ HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize
 		goto fail;
 	}
 
-	if (pthread_mutex_init(&thread->mutex, NULL) != 0)
+	if (!run_mutex_init(pthread_mutex_init, &thread->mutex, NULL))
 	{
 		WLog_ERR(TAG, "failed to initialize thread mutex");
 		goto fail;
@@ -444,28 +706,10 @@ HANDLE CreateThread(LPSECURITY_ATTRIBUTES lpThreadAttributes, SIZE_T dwStackSize
 		goto fail;
 	}
 
-	if (pthread_mutex_init(&thread->threadIsReadyMutex, NULL) != 0)
-	{
-		WLog_ERR(TAG, "failed to initialize a mutex for a condition variable");
+	if (!mux_condition_bundle_init(&thread->isCreated))
 		goto fail;
-	}
-
-	if (pthread_mutex_init(&thread->threadReadyMutex, NULL) != 0)
-	{
-		WLog_ERR(TAG, "failed to initialize a mutex for a condition variable");
+	if (!mux_condition_bundle_init(&thread->isRunning))
 		goto fail;
-	}
-
-	if (pthread_cond_init(&thread->threadIsReady, NULL) != 0)
-	{
-		WLog_ERR(TAG, "failed to initialize a condition variable");
-		goto fail;
-	}
-	if (pthread_cond_init(&thread->threadReady, NULL) != 0)
-	{
-		WLog_ERR(TAG, "failed to initialize a condition variable");
-		goto fail;
-	}
 
 	WINPR_HANDLE_SET_TYPE_AND_MODE(thread, HANDLE_TYPE_THREAD, WINPR_FD_READ);
 	handle = (HANDLE)thread;
@@ -491,7 +735,6 @@ fail:
 
 void cleanup_handle(void* obj)
 {
-	int rc;
 	WINPR_THREAD* thread = (WINPR_THREAD*)obj;
 	if (!thread)
 		return;
@@ -499,29 +742,9 @@ void cleanup_handle(void* obj)
 	if (!apc_uninit(&thread->apc))
 		WLog_ERR(TAG, "failed to destroy APC");
 
-	rc = pthread_cond_destroy(&thread->threadIsReady);
-	if (rc)
-		WLog_ERR(TAG, "failed to destroy thread->threadIsReady [%d] %s (%d)", rc, strerror(errno),
-		         errno);
-
-	rc = pthread_cond_destroy(&thread->threadReady);
-	if (rc)
-		WLog_ERR(TAG, "failed to destroy thread->threadReady [%d] %s (%d)", rc, strerror(errno),
-		         errno);
-
-	rc = pthread_mutex_destroy(&thread->threadIsReadyMutex);
-	if (rc)
-		WLog_ERR(TAG, "failed to destroy thread->threadIsReadyMutex [%d] %s (%d)", rc,
-		         strerror(errno), errno);
-
-	rc = pthread_mutex_destroy(&thread->threadReadyMutex);
-	if (rc)
-		WLog_ERR(TAG, "failed to destroy thread->threadReadyMutex [%d] %s (%d)", rc,
-		         strerror(errno), errno);
-
-	rc = pthread_mutex_destroy(&thread->mutex);
-	if (rc)
-		WLog_ERR(TAG, "failed to destroy thread->mutex [%d] %s (%d)", rc, strerror(errno), errno);
+	mux_condition_bundle_uninit(&thread->isCreated);
+	mux_condition_bundle_uninit(&thread->isRunning);
+	run_mutex_fkt(pthread_mutex_destroy, &thread->mutex);
 
 	winpr_event_uninit(&thread->event);
 
@@ -584,7 +807,7 @@ HANDLE CreateRemoteThread(HANDLE hProcess, LPSECURITY_ATTRIBUTES lpThreadAttribu
                           SIZE_T dwStackSize, LPTHREAD_START_ROUTINE lpStartAddress,
                           LPVOID lpParameter, DWORD dwCreationFlags, LPDWORD lpThreadId)
 {
-	WLog_ERR(TAG, "%s: not implemented", __FUNCTION__);
+	WLog_ERR(TAG, "not implemented");
 	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
 	return NULL;
 }
@@ -638,12 +861,16 @@ VOID ExitThread(DWORD dwExitCode)
 
 BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode)
 {
-	ULONG Type;
-	WINPR_HANDLE* Object;
-	WINPR_THREAD* thread;
+	ULONG Type = 0;
+	WINPR_HANDLE* Object = NULL;
+	WINPR_THREAD* thread = NULL;
 
-	if (!winpr_Handle_GetInfo(hThread, &Type, &Object))
+	if (!winpr_Handle_GetInfo(hThread, &Type, &Object) || Object->Type != HANDLE_TYPE_THREAD)
+	{
+		WLog_ERR(TAG, "hThread is not a thread");
+		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
+	}
 
 	thread = (WINPR_THREAD*)Object;
 	*lpExitCode = thread->dwExitCode;
@@ -652,20 +879,13 @@ BOOL GetExitCodeThread(HANDLE hThread, LPDWORD lpExitCode)
 
 WINPR_THREAD* winpr_GetCurrentThread(VOID)
 {
-	WINPR_THREAD* ret;
+	WINPR_THREAD* ret = NULL;
 
 	InitOnceExecuteOnce(&threads_InitOnce, initializeThreads, NULL, NULL);
 	if (mainThreadId == pthread_self())
 		return (HANDLE)&mainThread;
 
 	ret = TlsGetValue(currentThreadTlsIndex);
-	if (!ret)
-	{
-		WLog_ERR(TAG, "function called, but no matching entry in thread list!");
-#if defined(WITH_DEBUG_THREADS)
-		DumpThreadHandles();
-#endif
-	}
 	return ret;
 }
 
@@ -676,7 +896,7 @@ HANDLE _GetCurrentThread(VOID)
 
 DWORD GetCurrentThreadId(VOID)
 {
-	pthread_t tid;
+	pthread_t tid = 0;
 	tid = pthread_self();
 	/* Since pthread_t can be 64-bits on some systems, take just the    */
 	/* lower 32-bits of it for the thread ID returned by this function. */
@@ -701,10 +921,10 @@ static void userAPC(LPVOID arg)
 
 DWORD QueueUserAPC(PAPCFUNC pfnAPC, HANDLE hThread, ULONG_PTR dwData)
 {
-	ULONG Type;
-	WINPR_HANDLE* Object;
-	WINPR_APC_ITEM* apc;
-	UserApcItem* apcItem;
+	ULONG Type = 0;
+	WINPR_HANDLE* Object = NULL;
+	WINPR_APC_ITEM* apc = NULL;
+	UserApcItem* apcItem = NULL;
 
 	if (!pfnAPC)
 		return 1;
@@ -737,30 +957,34 @@ DWORD QueueUserAPC(PAPCFUNC pfnAPC, HANDLE hThread, ULONG_PTR dwData)
 
 DWORD ResumeThread(HANDLE hThread)
 {
-	ULONG Type;
-	WINPR_HANDLE* Object;
-	WINPR_THREAD* thread;
+	ULONG Type = 0;
+	WINPR_HANDLE* Object = NULL;
+	WINPR_THREAD* thread = NULL;
 
-	if (!winpr_Handle_GetInfo(hThread, &Type, &Object))
+	if (!winpr_Handle_GetInfo(hThread, &Type, &Object) || Object->Type != HANDLE_TYPE_THREAD)
+	{
+		WLog_ERR(TAG, "hThread is not a thread");
+		SetLastError(ERROR_INVALID_PARAMETER);
 		return (DWORD)-1;
+	}
 
 	thread = (WINPR_THREAD*)Object;
 
-	if (pthread_mutex_lock(&thread->mutex))
+	if (!run_mutex_fkt(pthread_mutex_lock, &thread->mutex))
 		return (DWORD)-1;
 
 	if (!thread->started)
 	{
 		if (!winpr_StartThread(thread))
 		{
-			pthread_mutex_unlock(&thread->mutex);
+			run_mutex_fkt(pthread_mutex_checked_unlock, &thread->mutex);
 			return (DWORD)-1;
 		}
 	}
 	else
 		WLog_WARN(TAG, "Thread already started!");
 
-	if (pthread_mutex_unlock(&thread->mutex))
+	if (!run_mutex_fkt(pthread_mutex_checked_unlock, &thread->mutex))
 		return (DWORD)-1;
 
 	return 0;
@@ -768,7 +992,7 @@ DWORD ResumeThread(HANDLE hThread)
 
 DWORD SuspendThread(HANDLE hThread)
 {
-	WLog_ERR(TAG, "%s: not implemented", __FUNCTION__);
+	WLog_ERR(TAG, "not implemented");
 	SetLastError(ERROR_CALL_NOT_IMPLEMENTED);
 	return (DWORD)-1;
 }
@@ -787,18 +1011,18 @@ BOOL SwitchToThread(VOID)
 
 BOOL TerminateThread(HANDLE hThread, DWORD dwExitCode)
 {
-	ULONG Type;
-	WINPR_HANDLE* Object;
-	WINPR_THREAD* thread;
+	ULONG Type = 0;
+	WINPR_HANDLE* Object = NULL;
+	WINPR_THREAD* thread = NULL;
 
-	if (!winpr_Handle_GetInfo(hThread, &Type, &Object))
+	if (!winpr_Handle_GetInfo(hThread, &Type, &Object) || Object->Type != HANDLE_TYPE_THREAD)
 		return FALSE;
 
 	thread = (WINPR_THREAD*)Object;
 	thread->exited = TRUE;
 	thread->dwExitCode = dwExitCode;
 
-	if (pthread_mutex_lock(&thread->mutex))
+	if (!run_mutex_fkt(pthread_mutex_lock, &thread->mutex))
 		return FALSE;
 
 #ifndef ANDROID
@@ -807,7 +1031,7 @@ BOOL TerminateThread(HANDLE hThread, DWORD dwExitCode)
 	WLog_ERR(TAG, "Function not supported on this platform!");
 #endif
 
-	if (pthread_mutex_unlock(&thread->mutex))
+	if (!run_mutex_fkt(pthread_mutex_checked_unlock, &thread->mutex))
 		return FALSE;
 
 	set_event(thread);
@@ -817,13 +1041,13 @@ BOOL TerminateThread(HANDLE hThread, DWORD dwExitCode)
 VOID DumpThreadHandles(void)
 {
 #if defined(WITH_DEBUG_THREADS)
-	char** msg;
-	size_t used, i;
+	char** msg = NULL;
+	size_t used = 0;
 	void* stack = winpr_backtrace(20);
 	WLog_DBG(TAG, "---------------- Called from ----------------------------");
 	msg = winpr_backtrace_symbols(stack, &used);
 
-	for (i = 0; i < used; i++)
+	for (size_t i = 0; i < used; i++)
 	{
 		WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 	}
@@ -844,13 +1068,13 @@ VOID DumpThreadHandles(void)
 		int x, count = ListDictionary_GetKeys(thread_list, &keys);
 		WLog_DBG(TAG, "Dumping %d elements", count);
 
-		for (x = 0; x < count; x++)
+		for (size_t x = 0; x < count; x++)
 		{
 			WINPR_THREAD* thread = ListDictionary_GetItemValue(thread_list, (void*)keys[x]);
 			WLog_DBG(TAG, "Thread [%d] handle created still not closed!", x);
 			msg = winpr_backtrace_symbols(thread->create_stack, &used);
 
-			for (i = 0; i < used; i++)
+			for (size_t i = 0; i < used; i++)
 			{
 				WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 			}
@@ -866,7 +1090,7 @@ VOID DumpThreadHandles(void)
 				WLog_DBG(TAG, "Thread [%d] exited at:", x);
 				msg = winpr_backtrace_symbols(thread->exit_stack, &used);
 
-				for (i = 0; i < used; i++)
+				for (size_t i = 0; i < used; i++)
 					WLog_DBG(TAG, "[%" PRIdz "]: %s", i, msg[i]);
 
 				free(msg);

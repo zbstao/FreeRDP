@@ -24,13 +24,13 @@
 
 #include <winpr/winsock.h>
 
-#ifdef HAVE_UNISTD_H
+#ifdef WINPR_HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_SYS_FILIO_H
+#ifdef WINPR_HAVE_SYS_FILIO_H
 #include <sys/filio.h>
 #endif
-#ifdef HAVE_SYS_SOCKIO_H
+#ifdef WINPR_HAVE_SYS_SOCKIO_H
 #include <sys/sockio.h>
 #endif
 
@@ -236,8 +236,8 @@ PCSTR winpr_inet_ntop(INT Family, PVOID pAddr, PSTR pStringBuf, size_t StringBuf
 {
 	if (Family == AF_INET)
 	{
-		struct sockaddr_in in;
-		memset(&in, 0, sizeof(in));
+		struct sockaddr_in in = { 0 };
+
 		in.sin_family = AF_INET;
 		memcpy(&in.sin_addr, pAddr, sizeof(struct in_addr));
 		getnameinfo((struct sockaddr*)&in, sizeof(struct sockaddr_in), pStringBuf, StringBufSize,
@@ -246,8 +246,8 @@ PCSTR winpr_inet_ntop(INT Family, PVOID pAddr, PSTR pStringBuf, size_t StringBuf
 	}
 	else if (Family == AF_INET6)
 	{
-		struct sockaddr_in6 in;
-		memset(&in, 0, sizeof(in));
+		struct sockaddr_in6 in = { 0 };
+
 		in.sin6_family = AF_INET6;
 		memcpy(&in.sin6_addr, pAddr, sizeof(struct in_addr6));
 		getnameinfo((struct sockaddr*)&in, sizeof(struct sockaddr_in6), pStringBuf, StringBufSize,
@@ -288,12 +288,13 @@ INT winpr_inet_pton(INT Family, PCSTR pszAddrString, PVOID pAddrBuf)
 
 #include <netdb.h>
 #include <errno.h>
-#include <unistd.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <net/if.h>
+
+#include <winpr/assert.h>
 
 #ifndef MSG_NOSIGNAL
 #define MSG_NOSIGNAL 0
@@ -301,6 +302,8 @@ INT winpr_inet_pton(INT Family, PCSTR pszAddrString, PVOID pAddrBuf)
 
 int WSAStartup(WORD wVersionRequired, LPWSADATA lpWSAData)
 {
+	WINPR_ASSERT(lpWSAData);
+
 	ZeroMemory(lpWSAData, sizeof(WSADATA));
 	lpWSAData->wVersion = wVersionRequired;
 	lpWSAData->wHighVersion = MAKEWORD(2, 2);
@@ -733,7 +736,7 @@ BOOL WSAResetEvent(HANDLE hEvent)
 
 BOOL WSACloseEvent(HANDLE hEvent)
 {
-	BOOL status;
+	BOOL status = 0;
 	status = CloseHandle(hEvent);
 
 	if (!status)
@@ -774,7 +777,7 @@ DWORD WSAWaitForMultipleEvents(DWORD cEvents, const HANDLE* lphEvents, BOOL fWai
 SOCKET WSASocketA(int af, int type, int protocol, LPWSAPROTOCOL_INFOA lpProtocolInfo, GROUP g,
                   DWORD dwFlags)
 {
-	SOCKET s;
+	SOCKET s = 0;
 	s = _socket(af, type, protocol);
 	return s;
 }
@@ -789,24 +792,24 @@ int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuff
              LPVOID lpvOutBuffer, DWORD cbOutBuffer, LPDWORD lpcbBytesReturned,
              LPWSAOVERLAPPED lpOverlapped, LPWSAOVERLAPPED_COMPLETION_ROUTINE lpCompletionRoutine)
 {
-	int fd;
-	int index;
-	ULONG nFlags;
-	size_t offset;
-	size_t ifreq_len;
-	struct ifreq* ifreq;
+	int fd = 0;
+	int index = 0;
+	ULONG nFlags = 0;
+	size_t offset = 0;
+	size_t ifreq_len = 0;
+	struct ifreq* ifreq = NULL;
 	struct ifconf ifconf;
 	char address[128];
 	char broadcast[128];
 	char netmask[128];
 	char buffer[4096];
-	int numInterfaces;
-	int maxNumInterfaces;
-	INTERFACE_INFO* pInterface;
-	INTERFACE_INFO* pInterfaces;
-	struct sockaddr_in* pAddress;
-	struct sockaddr_in* pBroadcast;
-	struct sockaddr_in* pNetmask;
+	int numInterfaces = 0;
+	int maxNumInterfaces = 0;
+	INTERFACE_INFO* pInterface = NULL;
+	INTERFACE_INFO* pInterfaces = NULL;
+	struct sockaddr_in* pAddress = NULL;
+	struct sockaddr_in* pBroadcast = NULL;
+	struct sockaddr_in* pNetmask = NULL;
 
 	if ((dwIoControlCode != SIO_GET_INTERFACE_LIST) ||
 	    (!lpvOutBuffer || !cbOutBuffer || !lpcbBytesReturned))
@@ -820,7 +823,6 @@ int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuff
 	maxNumInterfaces = cbOutBuffer / sizeof(INTERFACE_INFO);
 #ifdef WSAIOCTL_IFADDRS
 	{
-		struct ifaddrs* ifa = NULL;
 		struct ifaddrs* ifap = NULL;
 
 		if (getifaddrs(&ifap) != 0)
@@ -832,7 +834,7 @@ int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuff
 		index = 0;
 		numInterfaces = 0;
 
-		for (ifa = ifap; ifa; ifa = ifa->ifa_next)
+		for (struct ifaddrs* ifa = ifap; ifa; ifa = ifa->ifa_next)
 		{
 			pInterface = &pInterfaces[index];
 			pAddress = (struct sockaddr_in*)&pInterface->iiAddress;
@@ -985,7 +987,7 @@ int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuff
 		inet_pton(ifreq->ifr_addr.sa_family, netmask, (void*)&pNetmask->sin_addr);
 		numInterfaces++;
 	next_ifreq:
-#if !defined(__linux__) && !defined(__sun__) && !defined(__CYGWIN__)
+#if !defined(__linux__) && !defined(__sun__) && !defined(__CYGWIN__) && !defined(EMSCRIPTEN)
 		ifreq_len = IFNAMSIZ + ifreq->ifr_addr.sa_len;
 #else
 		ifreq_len = sizeof(*ifreq);
@@ -1001,7 +1003,7 @@ int WSAIoctl(SOCKET s, DWORD dwIoControlCode, LPVOID lpvInBuffer, DWORD cbInBuff
 
 SOCKET _accept(SOCKET s, struct sockaddr* addr, int* addrlen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	socklen_t s_addrlen = (socklen_t)*addrlen;
 	status = accept(fd, addr, &s_addrlen);
@@ -1011,7 +1013,7 @@ SOCKET _accept(SOCKET s, struct sockaddr* addr, int* addrlen)
 
 int _bind(SOCKET s, const struct sockaddr* addr, int namelen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = bind(fd, addr, (socklen_t)namelen);
 
@@ -1023,7 +1025,7 @@ int _bind(SOCKET s, const struct sockaddr* addr, int namelen)
 
 int closesocket(SOCKET s)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = close(fd);
 	return status;
@@ -1031,7 +1033,7 @@ int closesocket(SOCKET s)
 
 int _connect(SOCKET s, const struct sockaddr* name, int namelen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = connect(fd, name, (socklen_t)namelen);
 
@@ -1047,7 +1049,7 @@ int _ioctlsocket(SOCKET s, long cmd, u_long* argp)
 
 	if (cmd == FIONBIO)
 	{
-		int flags;
+		int flags = 0;
 
 		if (!argp)
 			return SOCKET_ERROR;
@@ -1068,7 +1070,7 @@ int _ioctlsocket(SOCKET s, long cmd, u_long* argp)
 
 int _getpeername(SOCKET s, struct sockaddr* name, int* namelen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	socklen_t s_namelen = (socklen_t)*namelen;
 	status = getpeername(fd, name, &s_namelen);
@@ -1078,7 +1080,7 @@ int _getpeername(SOCKET s, struct sockaddr* name, int* namelen)
 
 int _getsockname(SOCKET s, struct sockaddr* name, int* namelen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	socklen_t s_namelen = (socklen_t)*namelen;
 	status = getsockname(fd, name, &s_namelen);
@@ -1088,7 +1090,7 @@ int _getsockname(SOCKET s, struct sockaddr* name, int* namelen)
 
 int _getsockopt(SOCKET s, int level, int optname, char* optval, int* optlen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	socklen_t s_optlen = (socklen_t)*optlen;
 	status = getsockopt(fd, level, optname, (void*)optval, &s_optlen);
@@ -1118,7 +1120,7 @@ char* _inet_ntoa(struct in_addr in)
 
 int _listen(SOCKET s, int backlog)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = listen(fd, backlog);
 	return status;
@@ -1136,7 +1138,7 @@ u_short _ntohs(u_short netshort)
 
 int _recv(SOCKET s, char* buf, int len, int flags)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = (int)recv(fd, (void*)buf, (size_t)len, flags);
 	return status;
@@ -1144,7 +1146,7 @@ int _recv(SOCKET s, char* buf, int len, int flags)
 
 int _recvfrom(SOCKET s, char* buf, int len, int flags, struct sockaddr* from, int* fromlen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	socklen_t s_fromlen = (socklen_t)*fromlen;
 	status = (int)recvfrom(fd, (void*)buf, (size_t)len, flags, from, &s_fromlen);
@@ -1155,11 +1157,16 @@ int _recvfrom(SOCKET s, char* buf, int len, int flags, struct sockaddr* from, in
 int _select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds,
             const struct timeval* timeout)
 {
-	int status;
-
+	int status = 0;
+	union
+	{
+		const struct timeval* cpv;
+		struct timeval* pv;
+	} cnv;
+	cnv.cpv = timeout;
 	do
 	{
-		status = select(nfds, readfds, writefds, exceptfds, (struct timeval*)timeout);
+		status = select(nfds, readfds, writefds, exceptfds, cnv.pv);
 	} while ((status < 0) && (errno == EINTR));
 
 	return status;
@@ -1167,7 +1174,7 @@ int _select(int nfds, fd_set* readfds, fd_set* writefds, fd_set* exceptfds,
 
 int _send(SOCKET s, const char* buf, int len, int flags)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	flags |= MSG_NOSIGNAL;
 	status = (int)send(fd, (const void*)buf, (size_t)len, flags);
@@ -1176,7 +1183,7 @@ int _send(SOCKET s, const char* buf, int len, int flags)
 
 int _sendto(SOCKET s, const char* buf, int len, int flags, const struct sockaddr* to, int tolen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = (int)sendto(fd, (const void*)buf, (size_t)len, flags, to, (socklen_t)tolen);
 	return status;
@@ -1184,7 +1191,7 @@ int _sendto(SOCKET s, const char* buf, int len, int flags, const struct sockaddr
 
 int _setsockopt(SOCKET s, int level, int optname, const char* optval, int optlen)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	status = setsockopt(fd, level, optname, (const void*)optval, (socklen_t)optlen);
 	return status;
@@ -1192,7 +1199,7 @@ int _setsockopt(SOCKET s, int level, int optname, const char* optval, int optlen
 
 int _shutdown(SOCKET s, int how)
 {
-	int status;
+	int status = 0;
 	int fd = (int)s;
 	int s_how = -1;
 
@@ -1220,8 +1227,8 @@ int _shutdown(SOCKET s, int how)
 
 SOCKET _socket(int af, int type, int protocol)
 {
-	int fd;
-	SOCKET s;
+	int fd = 0;
+	SOCKET s = 0;
 	fd = socket(af, type, protocol);
 
 	if (fd < 0)
@@ -1233,49 +1240,49 @@ SOCKET _socket(int af, int type, int protocol)
 
 struct hostent* _gethostbyaddr(const char* addr, int len, int type)
 {
-	struct hostent* host;
+	struct hostent* host = NULL;
 	host = gethostbyaddr((const void*)addr, (socklen_t)len, type);
 	return host;
 }
 
 struct hostent* _gethostbyname(const char* name)
 {
-	struct hostent* host;
+	struct hostent* host = NULL;
 	host = gethostbyname(name);
 	return host;
 }
 
 int _gethostname(char* name, int namelen)
 {
-	int status;
+	int status = 0;
 	status = gethostname(name, (size_t)namelen);
 	return status;
 }
 
 struct servent* _getservbyport(int port, const char* proto)
 {
-	struct servent* serv;
+	struct servent* serv = NULL;
 	serv = getservbyport(port, proto);
 	return serv;
 }
 
 struct servent* _getservbyname(const char* name, const char* proto)
 {
-	struct servent* serv;
+	struct servent* serv = NULL;
 	serv = getservbyname(name, proto);
 	return serv;
 }
 
 struct protoent* _getprotobynumber(int number)
 {
-	struct protoent* proto;
+	struct protoent* proto = NULL;
 	proto = getprotobynumber(number);
 	return proto;
 }
 
 struct protoent* _getprotobyname(const char* name)
 {
-	struct protoent* proto;
+	struct protoent* proto = NULL;
 	proto = getprotobyname(name);
 	return proto;
 }

@@ -23,48 +23,55 @@
 #include <winpr/wtypes.h>
 #include <freerdp/api.h>
 
-/** @brief ring buffer meta data */
-typedef struct
-{
-	size_t initialSize;
-	size_t freeSize;
-	size_t size;
-	size_t readPtr;
-	size_t writePtr;
-	BYTE* buffer;
-} RingBuffer;
-
-/** @brief a piece of data in the ring buffer, exactly like a glibc iovec */
-typedef struct
-{
-	size_t size;
-	const BYTE* data;
-} DataChunk;
-
 #ifdef __cplusplus
 extern "C"
 {
 #endif
 
-	/** initialise a ringbuffer
+	/** @brief ring buffer meta data */
+	typedef struct
+	{
+		size_t initialSize;
+		size_t freeSize;
+		size_t size;
+		size_t readPtr;
+		size_t writePtr;
+		BYTE* buffer;
+	} RingBuffer;
+
+	/** @brief a piece of data in the ring buffer, exactly like a glibc iovec */
+	typedef struct
+	{
+		size_t size;
+		const BYTE* data;
+	} DataChunk;
+
+	/**
+	 * initialise a ringbuffer
+	 *
 	 * @param initialSize the initial capacity of the ringBuffer
 	 * @return if the initialisation was successful
 	 */
 	FREERDP_API BOOL ringbuffer_init(RingBuffer* rb, size_t initialSize);
 
-	/** destroys internal data used by this ringbuffer
-	 * @param ringbuffer
+	/**
+	 * destroys internal data used by this ringbuffer
+	 *
+	 * @param ringbuffer A pointer to the ringbuffer
 	 */
 	FREERDP_API void ringbuffer_destroy(RingBuffer* ringbuffer);
 
-	/** computes the space used in this ringbuffer
-	 * @param ringbuffer
+	/**
+	 * computes the space used in this ringbuffer
+	 *
+	 * @param ringbuffer A pointer to the ringbuffer
 	 * @return the number of bytes stored in that ringbuffer
 	 */
 	FREERDP_API size_t ringbuffer_used(const RingBuffer* ringbuffer);
 
 	/** returns the capacity of the ring buffer
-	 * @param ringbuffer
+	 *
+	 * @param ringbuffer A pointer to the ringbuffer
 	 * @return the capacity of this ring buffer
 	 */
 	FREERDP_API size_t ringbuffer_capacity(const RingBuffer* ringbuffer);
@@ -113,7 +120,7 @@ extern "C"
 	 * This function is used to commit the bytes that were effectively consumed.
 	 *
 	 * @param rb the ring buffer
-	 * @param sz the
+	 * @param sz the number of bytes to read
 	 */
 	FREERDP_API void ringbuffer_commit_read_bytes(RingBuffer* rb, size_t sz);
 

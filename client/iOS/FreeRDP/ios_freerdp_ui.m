@@ -30,8 +30,9 @@ static BOOL ios_ui_authenticate_raw(freerdp *instance, char **username, char **p
 	                                 @"password",
 	                                 (*domain) ? [NSString stringWithUTF8String:*domain] : @"",
 	                                 @"domain",
-	                                 [NSString
-	                                     stringWithUTF8String:instance->settings->ServerHostname],
+	                                 [NSString stringWithUTF8String:freerdp_settings_get_string(
+	                                                                    instance->context->settings,
+	                                                                    FreeRDP_ServerHostname)],
 	                                 @"hostname", // used for the auth prompt message; not changed
 	                                 nil];
 	// request auth UI
@@ -79,8 +80,9 @@ BOOL ios_ui_gw_authenticate(freerdp *instance, char **username, char **password,
 	return ios_ui_authenticate_raw(instance, username, password, domain, "gateway");
 }
 
-DWORD ios_ui_verify_certificate(freerdp *instance, const char *common_name, const char *subject,
-                                const char *issuer, const char *fingerprint, BOOL host_mismatch)
+DWORD ios_ui_verify_certificate_ex(freerdp *instance, const char *host, UINT16 port,
+                                   const char *common_name, const char *subject, const char *issuer,
+                                   const char *fingerprint, DWORD flags)
 {
 	// check whether we accept all certificates
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:@"security.accept_certificates"] == YES)
@@ -112,13 +114,14 @@ DWORD ios_ui_verify_certificate(freerdp *instance, const char *common_name, cons
 	return 1;
 }
 
-DWORD ios_ui_verify_changed_certificate(freerdp *instance, const char *common_name,
-                                        const char *subject, const char *issuer,
-                                        const char *new_fingerprint, const char *old_subject,
-                                        const char *old_issuer, const char *old_fingerprint)
+DWORD ios_ui_verify_changed_certificate_ex(freerdp *instance, const char *host, UINT16 port,
+                                           const char *common_name, const char *subject,
+                                           const char *issuer, const char *fingerprint,
+                                           const char *old_subject, const char *old_issuer,
+                                           const char *old_fingerprint, DWORD flags)
 {
-	return ios_ui_verify_certificate(instance, common_name, subject, issuer, new_fingerprint,
-	                                 FALSE);
+	return ios_ui_verify_certificate_ex(instance, host, port, common_name, subject, issuer,
+	                                    fingerprint, flags);
 }
 
 #pragma mark -
@@ -158,7 +161,8 @@ BOOL ios_ui_resize_window(rdpContext *context)
 	settings = context->settings;
 	gdi = context->gdi;
 
-	if (!gdi_resize(gdi, settings->DesktopWidth, settings->DesktopHeight))
+	if (!gdi_resize(gdi, freerdp_settings_get_uint32(settings, FreeRDP_DesktopWidth),
+	                freerdp_settings_get_uint32(settings, FreeRDP_DesktopHeight)))
 		return FALSE;
 
 	ios_resize_display_buffer(MFI_FROM_INSTANCE(context->instance));
@@ -176,7 +180,7 @@ static void ios_create_bitmap_context(mfInfo *mfi)
 	rdpGdi *gdi = mfi->instance->context->gdi;
 	CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
 
-	if (GetBytesPerPixel(gdi->dstFormat) == 2)
+	if (FreeRDPGetBytesPerPixel(gdi->dstFormat) == 2)
 		mfi->bitmap_context = CGBitmapContextCreate(
 		    gdi->primary_buffer, gdi->width, gdi->height, 5, gdi->stride, colorSpace,
 		    kCGBitmapByteOrder16Little | kCGImageAlphaNoneSkipFirst);

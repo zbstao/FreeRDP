@@ -57,7 +57,7 @@ static LONG smartcard_call_to_operation_handle(SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_EstablishContext_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -73,7 +73,7 @@ static LONG smartcard_EstablishContext_Decode(wStream* s, SMARTCARD_OPERATION* o
 
 static LONG smartcard_ReleaseContext_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -87,7 +87,7 @@ static LONG smartcard_ReleaseContext_Decode(wStream* s, SMARTCARD_OPERATION* ope
 
 static LONG smartcard_IsValidContext_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -99,7 +99,7 @@ static LONG smartcard_IsValidContext_Decode(wStream* s, SMARTCARD_OPERATION* ope
 
 static LONG smartcard_ListReaderGroupsA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -111,7 +111,7 @@ static LONG smartcard_ListReaderGroupsA_Decode(wStream* s, SMARTCARD_OPERATION* 
 
 static LONG smartcard_ListReaderGroupsW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -123,7 +123,7 @@ static LONG smartcard_ListReaderGroupsW_Decode(wStream* s, SMARTCARD_OPERATION* 
 
 static LONG smartcard_ListReadersA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -135,7 +135,7 @@ static LONG smartcard_ListReadersA_Decode(wStream* s, SMARTCARD_OPERATION* opera
 
 static LONG smartcard_ListReadersW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -147,7 +147,7 @@ static LONG smartcard_ListReadersW_Decode(wStream* s, SMARTCARD_OPERATION* opera
 
 static LONG smartcard_context_and_two_strings_a_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -160,7 +160,7 @@ static LONG smartcard_context_and_two_strings_a_Decode(wStream* s, SMARTCARD_OPE
 
 static LONG smartcard_context_and_two_strings_w_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -173,7 +173,7 @@ static LONG smartcard_context_and_two_strings_w_Decode(wStream* s, SMARTCARD_OPE
 
 static LONG smartcard_context_and_string_a_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -185,7 +185,7 @@ static LONG smartcard_context_and_string_a_Decode(wStream* s, SMARTCARD_OPERATIO
 
 static LONG smartcard_context_and_string_w_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -197,7 +197,7 @@ static LONG smartcard_context_and_string_w_Decode(wStream* s, SMARTCARD_OPERATIO
 
 static LONG smartcard_LocateCardsA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -209,7 +209,7 @@ static LONG smartcard_LocateCardsA_Decode(wStream* s, SMARTCARD_OPERATION* opera
 
 static LONG smartcard_LocateCardsW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -221,7 +221,7 @@ static LONG smartcard_LocateCardsW_Decode(wStream* s, SMARTCARD_OPERATION* opera
 
 static LONG smartcard_GetStatusChangeA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -233,7 +233,7 @@ static LONG smartcard_GetStatusChangeA_Decode(wStream* s, SMARTCARD_OPERATION* o
 
 static LONG smartcard_GetStatusChangeW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -245,7 +245,7 @@ static LONG smartcard_GetStatusChangeW_Decode(wStream* s, SMARTCARD_OPERATION* o
 
 static LONG smartcard_Cancel_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -257,7 +257,7 @@ static LONG smartcard_Cancel_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_ConnectA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -269,7 +269,7 @@ static LONG smartcard_ConnectA_Decode(wStream* s, SMARTCARD_OPERATION* operation
 
 static LONG smartcard_ConnectW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -281,7 +281,7 @@ static LONG smartcard_ConnectW_Decode(wStream* s, SMARTCARD_OPERATION* operation
 
 static LONG smartcard_Reconnect_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -293,7 +293,7 @@ static LONG smartcard_Reconnect_Decode(wStream* s, SMARTCARD_OPERATION* operatio
 
 static LONG smartcard_Disconnect_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -306,7 +306,7 @@ static LONG smartcard_Disconnect_Decode(wStream* s, SMARTCARD_OPERATION* operati
 
 static LONG smartcard_BeginTransaction_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -319,7 +319,7 @@ static LONG smartcard_BeginTransaction_Decode(wStream* s, SMARTCARD_OPERATION* o
 
 static LONG smartcard_EndTransaction_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -332,7 +332,7 @@ static LONG smartcard_EndTransaction_Decode(wStream* s, SMARTCARD_OPERATION* ope
 
 static LONG smartcard_State_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -344,7 +344,7 @@ static LONG smartcard_State_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_StatusA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -356,7 +356,7 @@ static LONG smartcard_StatusA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_StatusW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -368,7 +368,7 @@ static LONG smartcard_StatusW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_Transmit_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -380,7 +380,7 @@ static LONG smartcard_Transmit_Decode(wStream* s, SMARTCARD_OPERATION* operation
 
 static LONG smartcard_Control_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -392,7 +392,7 @@ static LONG smartcard_Control_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 
 static LONG smartcard_GetAttrib_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -404,7 +404,7 @@ static LONG smartcard_GetAttrib_Decode(wStream* s, SMARTCARD_OPERATION* operatio
 
 static LONG smartcard_SetAttrib_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -419,11 +419,8 @@ static LONG smartcard_AccessStartedEvent_Decode(wStream* s, SMARTCARD_OPERATION*
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
 
-	if (Stream_GetRemainingLength(s) < 4)
-	{
-		WLog_WARN(TAG, "AccessStartedEvent is too short: %" PRIuz "", Stream_GetRemainingLength(s));
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 4))
 		return SCARD_F_INTERNAL_ERROR;
-	}
 
 	Stream_Read_INT32(s, operation->call.lng.LongValue); /* Unused (4 bytes) */
 
@@ -432,7 +429,7 @@ static LONG smartcard_AccessStartedEvent_Decode(wStream* s, SMARTCARD_OPERATION*
 
 static LONG smartcard_LocateCardsByATRA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -444,7 +441,7 @@ static LONG smartcard_LocateCardsByATRA_Decode(wStream* s, SMARTCARD_OPERATION* 
 
 static LONG smartcard_LocateCardsByATRW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -456,7 +453,7 @@ static LONG smartcard_LocateCardsByATRW_Decode(wStream* s, SMARTCARD_OPERATION* 
 
 static LONG smartcard_ReadCacheA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -468,7 +465,7 @@ static LONG smartcard_ReadCacheA_Decode(wStream* s, SMARTCARD_OPERATION* operati
 
 static LONG smartcard_ReadCacheW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -480,7 +477,7 @@ static LONG smartcard_ReadCacheW_Decode(wStream* s, SMARTCARD_OPERATION* operati
 
 static LONG smartcard_WriteCacheA_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -492,7 +489,7 @@ static LONG smartcard_WriteCacheA_Decode(wStream* s, SMARTCARD_OPERATION* operat
 
 static LONG smartcard_WriteCacheW_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -504,7 +501,7 @@ static LONG smartcard_WriteCacheW_Decode(wStream* s, SMARTCARD_OPERATION* operat
 
 static LONG smartcard_GetTransmitCount_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -525,7 +522,7 @@ static LONG smartcard_ReleaseStartedEvent_Decode(wStream* s, SMARTCARD_OPERATION
 
 static LONG smartcard_GetReaderIcon_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -537,7 +534,7 @@ static LONG smartcard_GetReaderIcon_Decode(wStream* s, SMARTCARD_OPERATION* oper
 
 static LONG smartcard_GetDeviceTypeId_Decode(wStream* s, SMARTCARD_OPERATION* operation)
 {
-	LONG status;
+	LONG status = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
@@ -550,23 +547,19 @@ static LONG smartcard_GetDeviceTypeId_Decode(wStream* s, SMARTCARD_OPERATION* op
 LONG smartcard_irp_device_control_decode(wStream* s, UINT32 CompletionId, UINT32 FileId,
                                          SMARTCARD_OPERATION* operation)
 {
-	LONG status;
-	UINT32 offset;
-	UINT32 ioControlCode;
-	UINT32 outputBufferLength;
-	UINT32 inputBufferLength;
+	LONG status = 0;
+	UINT32 offset = 0;
+	UINT32 ioControlCode = 0;
+	UINT32 outputBufferLength = 0;
+	UINT32 inputBufferLength = 0;
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(operation);
 
 	/* Device Control Request */
 
-	if (Stream_GetRemainingLength(s) < 32)
-	{
-		WLog_WARN(TAG, "Device Control Request is too short: %" PRIuz "",
-		          Stream_GetRemainingLength(s));
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 32))
 		return SCARD_F_INTERNAL_ERROR;
-	}
 
 	Stream_Read_UINT32(s, outputBufferLength); /* OutputBufferLength (4 bytes) */
 	Stream_Read_UINT32(s, inputBufferLength);  /* InputBufferLength (4 bytes) */
@@ -808,7 +801,7 @@ LONG smartcard_irp_device_control_decode(wStream* s, UINT32 CompletionId, UINT32
 
 	if (Stream_GetPosition(s) < Stream_Length(s))
 	{
-		SIZE_T difference;
+		SIZE_T difference = 0;
 		difference = Stream_Length(s) - Stream_GetPosition(s);
 		WLog_WARN(TAG,
 		          "IRP was not fully parsed %s (%s [0x%08" PRIX32 "]): Actual: %" PRIuz
@@ -816,12 +809,12 @@ LONG smartcard_irp_device_control_decode(wStream* s, UINT32 CompletionId, UINT32
 		          scard_get_ioctl_string(ioControlCode, TRUE),
 		          scard_get_ioctl_string(ioControlCode, FALSE), ioControlCode,
 		          Stream_GetPosition(s), Stream_Length(s), difference);
-		winpr_HexDump(TAG, WLOG_WARN, Stream_Pointer(s), difference);
+		winpr_HexDump(TAG, WLOG_WARN, Stream_ConstPointer(s), difference);
 	}
 
 	if (Stream_GetPosition(s) > Stream_Length(s))
 	{
-		SIZE_T difference;
+		SIZE_T difference = 0;
 		difference = Stream_GetPosition(s) - Stream_Length(s);
 		WLog_WARN(TAG,
 		          "IRP was parsed beyond its end %s (0x%08" PRIX32 "): Actual: %" PRIuz
@@ -835,8 +828,7 @@ LONG smartcard_irp_device_control_decode(wStream* s, UINT32 CompletionId, UINT32
 
 static void free_reader_states_a(LPSCARD_READERSTATEA rgReaderStates, UINT32 cReaders)
 {
-	UINT32 x;
-	for (x = 0; x < cReaders; x++)
+	for (UINT32 x = 0; x < cReaders; x++)
 	{
 		SCARD_READERSTATEA* state = &rgReaderStates[x];
 		free(state->szReader);
@@ -847,8 +839,7 @@ static void free_reader_states_a(LPSCARD_READERSTATEA rgReaderStates, UINT32 cRe
 
 static void free_reader_states_w(LPSCARD_READERSTATEW rgReaderStates, UINT32 cReaders)
 {
-	UINT32 x;
-	for (x = 0; x < cReaders; x++)
+	for (UINT32 x = 0; x < cReaders; x++)
 	{
 		SCARD_READERSTATEW* state = &rgReaderStates[x];
 		free(state->szReader);
@@ -1034,6 +1025,7 @@ void smartcard_operation_free(SMARTCARD_OPERATION* op, BOOL allocated)
 			free(call->Common.CardIdentifier);
 			free(call->Common.pbData);
 		}
+		break;
 		case SCARD_IOCTL_WRITECACHEW:
 		{
 			WriteCacheW_Call* call = &op->call.writeCacheW;

@@ -22,13 +22,11 @@
 #ifndef FREERDP_TRANSPORT_IO_H
 #define FREERDP_TRANSPORT_IO_H
 
-typedef struct rdp_transport_io rdpTransportIo;
+#include <winpr/stream.h>
 
 #include <freerdp/api.h>
 #include <freerdp/types.h>
-
-#include <winpr/stream.h>
-#include <freerdp/freerdp.h>
+#include <freerdp/settings.h>
 
 #ifdef __cplusplus
 extern "C"
@@ -41,6 +39,9 @@ extern "C"
 	typedef BOOL (*pTransportAttach)(rdpTransport* transport, int sockfd);
 	typedef int (*pTransportRWFkt)(rdpTransport* transport, wStream* s);
 	typedef SSIZE_T (*pTransportRead)(rdpTransport* transport, BYTE* data, size_t bytes);
+	typedef BOOL (*pTransportGetPublicKey)(rdpTransport* transport, const BYTE** data,
+	                                       DWORD* length);
+	typedef BOOL (*pTransportSetBlockingMode)(rdpTransport* transport, BOOL blocking);
 
 	struct rdp_transport_io
 	{
@@ -52,8 +53,13 @@ extern "C"
 		pTransportRWFkt ReadPdu;  /* Reads a whole PDU from the transport */
 		pTransportRWFkt WritePdu; /* Writes a whole PDU to the transport */
 		pTransportRead ReadBytes; /* Reads up to a requested amount of bytes from the transport */
+		pTransportGetPublicKey GetPublicKey;
+		pTransportSetBlockingMode SetBlockingMode;
+		UINT64 reserved[54]; /* Reserve some space for ABI compatibility */
 	};
 	typedef struct rdp_transport_io rdpTransportIo;
+
+	FREERDP_API BOOL freerdp_io_callback_set_event(rdpContext* context, BOOL set);
 
 	FREERDP_API const rdpTransportIo* freerdp_get_io_callbacks(rdpContext* context);
 	FREERDP_API BOOL freerdp_set_io_callbacks(rdpContext* context,

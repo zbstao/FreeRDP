@@ -24,8 +24,14 @@
 
 #include <winpr/wtypes.h>
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+
 #define RDPINPUT_HEADER_LENGTH 6
 
+#define RDPEI_CHANNEL_NAME "rdpei"
 #define RDPEI_DVC_CHANNEL_NAME "Microsoft::Windows::RDS::Input"
 
 /** @brief protocol version */
@@ -152,5 +158,9 @@ typedef struct
 	UINT16 frameCount;
 	RDPINPUT_PEN_FRAME* frames;
 } RDPINPUT_PEN_EVENT;
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif /* FREERDP_CHANNEL_RDPEI_H */

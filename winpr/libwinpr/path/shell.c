@@ -32,6 +32,10 @@
 #include <winpr/environment.h>
 
 #include <winpr/path.h>
+#include <winpr/wlog.h>
+
+#include "../log.h"
+#define TAG WINPR_TAG("path.shell")
 
 #if defined(__IOS__)
 #include "shell_ios.h"
@@ -59,8 +63,8 @@ static char* GetPath_XDG_RUNTIME_DIR(void);
 
 char* GetEnvAlloc(LPCSTR lpName)
 {
-	DWORD nSize;
-	DWORD nStatus;
+	DWORD nSize = 0;
+	DWORD nStatus = 0;
 	char* env = NULL;
 
 	nSize = GetEnvironmentVariableX(lpName, NULL, 0);
@@ -120,7 +124,7 @@ static char* GetPath_XDG_DATA_HOME(void)
 #if defined(WIN32) || defined(__IOS__)
 	path = GetPath_XDG_CONFIG_HOME();
 #else
-	size_t size;
+	size_t size = 0;
 	char* home = NULL;
 	/**
 	 * There is a single base directory relative to which user-specific data files should be
@@ -173,7 +177,7 @@ static char* GetPath_XDG_CONFIG_HOME(void)
 #elif defined(__IOS__)
 	path = ios_get_data();
 #else
-	size_t size;
+	size_t size = 0;
 	char* home = NULL;
 	/**
 	 * There is a single base directory relative to which user-specific configuration files should
@@ -231,7 +235,7 @@ static char* GetPath_XDG_CACHE_HOME(void)
 #elif defined(__IOS__)
 	path = ios_get_cache();
 #else
-	size_t size;
+	size_t size = 0;
 	/**
 	 * There is a single base directory relative to which user-specific non-essential (cached) data
 	 * should be written. This directory is defined by the environment variable $XDG_CACHE_HOME.
@@ -357,13 +361,15 @@ char* GetKnownPath(int id)
 			break;
 	}
 
+	if (!path)
+		WLog_WARN(TAG, "Path %s is %p", GetKnownPathIdString(id), path);
 	return path;
 }
 
 char* GetKnownSubPath(int id, const char* path)
 {
-	char* subPath;
-	char* knownPath;
+	char* subPath = NULL;
+	char* knownPath = NULL;
 	knownPath = GetKnownPath(id);
 
 	if (!knownPath)
@@ -377,8 +383,8 @@ char* GetKnownSubPath(int id, const char* path)
 char* GetEnvironmentPath(char* name)
 {
 	char* env = NULL;
-	DWORD nSize;
-	DWORD nStatus;
+	DWORD nSize = 0;
+	DWORD nStatus = 0;
 	nSize = GetEnvironmentVariableX(name, NULL, 0);
 
 	if (nSize)
@@ -402,8 +408,8 @@ char* GetEnvironmentPath(char* name)
 
 char* GetEnvironmentSubPath(char* name, const char* path)
 {
-	char* env;
-	char* subpath;
+	char* env = NULL;
+	char* subpath = NULL;
 	env = GetEnvironmentPath(name);
 
 	if (!env)
@@ -416,8 +422,8 @@ char* GetEnvironmentSubPath(char* name, const char* path)
 
 char* GetCombinedPath(const char* basePath, const char* subPath)
 {
-	size_t length;
-	HRESULT status;
+	size_t length = 0;
+	HRESULT status = 0;
 	char* path = NULL;
 	char* subPathCpy = NULL;
 	size_t basePathLength = 0;
@@ -473,8 +479,7 @@ BOOL PathMakePathA(LPCSTR path, LPSECURITY_ATTRIBUTES lpAttributes)
 	return (SHCreateDirectoryExA(NULL, path, lpAttributes) == ERROR_SUCCESS);
 #else
 	const char delim = PathGetSeparatorA(PATH_STYLE_NATIVE);
-	char* dup;
-	char* p;
+	char* dup = NULL;
 	BOOL result = TRUE;
 	/* we only operate on a non-null, absolute path */
 #if defined(__OS2__)
@@ -497,7 +502,7 @@ BOOL PathMakePathA(LPCSTR path, LPSECURITY_ATTRIBUTES lpAttributes)
 
 	while (p)
 #else
-	for (p = dup; p;)
+	for (char* p = dup; p;)
 #endif
 	{
 		if ((p = strchr(p + 1, delim)))
@@ -526,9 +531,9 @@ BOOL PathMakePathW(LPCWSTR path, LPSECURITY_ATTRIBUTES lpAttributes)
 #elif defined(_WIN32)
 	return (SHCreateDirectoryExW(NULL, path, lpAttributes) == ERROR_SUCCESS);
 #else
-	const WCHAR delim = PathGetSeparatorW(PATH_STYLE_NATIVE);
-	char* dup;
-	char* p;
+	const WCHAR wdelim = PathGetSeparatorW(PATH_STYLE_NATIVE);
+	const char delim = PathGetSeparatorA(PATH_STYLE_NATIVE);
+	char* dup = NULL;
 	BOOL result = TRUE;
 	/* we only operate on a non-null, absolute path */
 #if defined(__OS2__)
@@ -538,20 +543,21 @@ BOOL PathMakePathW(LPCWSTR path, LPSECURITY_ATTRIBUTES lpAttributes)
 
 #else
 
-	if (!path || *path != delim)
+	if (!path || *path != wdelim)
 		return FALSE;
 
 #endif
 
-	if (ConvertFromUnicode(CP_UTF8, 0, path, -1, &dup, 0, NULL, NULL) <= 0)
+	dup = ConvertWCharToUtf8Alloc(path, NULL);
+	if (!dup)
 		return FALSE;
 
 #ifdef __OS2__
-	p = (strlen(dup) > 3) && (dup[1] == L':') && (dup[2] == delim)) ? &dup[3] : dup;
+	p = (strlen(dup) > 3) && (dup[1] == ':') && (dup[2] == delim)) ? &dup[3] : dup;
 
 	while (p)
 #else
-	for (p = dup; p;)
+	for (char* p = dup; p;)
 #endif
 	{
 		if ((p = strchr(p + 1, delim)))
@@ -586,12 +592,16 @@ BOOL PathIsRelativeA(LPCSTR pszPath)
 BOOL PathIsRelativeW(LPCWSTR pszPath)
 {
 	LPSTR lpFileNameA = NULL;
-	BOOL ret;
+	BOOL ret = FALSE;
 
-	if (ConvertFromUnicode(CP_UTF8, 0, pszPath, -1, &lpFileNameA, 0, NULL, NULL) < 1)
-		return FALSE;
+	if (!pszPath)
+		goto fail;
 
+	lpFileNameA = ConvertWCharToUtf8Alloc(pszPath, NULL);
+	if (!lpFileNameA)
+		goto fail;
 	ret = PathIsRelativeA(lpFileNameA);
+fail:
 	free(lpFileNameA);
 	return ret;
 }
@@ -609,19 +619,23 @@ BOOL PathFileExistsA(LPCSTR pszPath)
 BOOL PathFileExistsW(LPCWSTR pszPath)
 {
 	LPSTR lpFileNameA = NULL;
-	BOOL ret;
+	BOOL ret = FALSE;
 
-	if (ConvertFromUnicode(CP_UTF8, 0, pszPath, -1, &lpFileNameA, 0, NULL, NULL) < 1)
-		return FALSE;
+	if (!pszPath)
+		goto fail;
+	lpFileNameA = ConvertWCharToUtf8Alloc(pszPath, NULL);
+	if (!lpFileNameA)
+		goto fail;
 
 	ret = winpr_PathFileExists(lpFileNameA);
+fail:
 	free(lpFileNameA);
 	return ret;
 }
 
 BOOL PathIsDirectoryEmptyA(LPCSTR pszPath)
 {
-	struct dirent* dp;
+	struct dirent* dp = NULL;
 	int empty = 1;
 	DIR* dir = opendir(pszPath);
 
@@ -644,21 +658,17 @@ BOOL PathIsDirectoryEmptyA(LPCSTR pszPath)
 BOOL PathIsDirectoryEmptyW(LPCWSTR pszPath)
 {
 	LPSTR lpFileNameA = NULL;
-	BOOL ret;
-
-	if (ConvertFromUnicode(CP_UTF8, 0, pszPath, -1, &lpFileNameA, 0, NULL, NULL) < 1)
-		return FALSE;
-
+	BOOL ret = FALSE;
+	if (!pszPath)
+		goto fail;
+	lpFileNameA = ConvertWCharToUtf8Alloc(pszPath, NULL);
+	if (!lpFileNameA)
+		goto fail;
 	ret = PathIsDirectoryEmptyA(lpFileNameA);
+fail:
 	free(lpFileNameA);
 	return ret;
 }
-
-#else
-
-#ifdef _MSC_VER
-#pragma comment(lib, "shlwapi.lib")
-#endif
 
 #endif
 
@@ -674,13 +684,42 @@ BOOL winpr_MoveFile(LPCSTR lpExistingFileName, LPCSTR lpNewFileName)
 	if (!lpExistingFileName || !lpNewFileName)
 		return FALSE;
 
-	if (ConvertToUnicode(CP_UTF8, 0, lpExistingFileName, -1, &lpExistingFileNameW, 0) < 1)
+	lpExistingFileNameW = ConvertUtf8ToWCharAlloc(lpExistingFileName, NULL);
+	if (!lpExistingFileNameW)
 		goto cleanup;
-
-	if (ConvertToUnicode(CP_UTF8, 0, lpNewFileName, -1, &lpNewFileNameW, 0) < 1)
+	lpNewFileNameW = ConvertUtf8ToWCharAlloc(lpNewFileName, NULL);
+	if (!lpNewFileNameW)
 		goto cleanup;
 
 	result = MoveFileW(lpExistingFileNameW, lpNewFileNameW);
+
+cleanup:
+	free(lpExistingFileNameW);
+	free(lpNewFileNameW);
+	return result;
+#endif
+}
+
+BOOL winpr_MoveFileEx(LPCSTR lpExistingFileName, LPCSTR lpNewFileName, DWORD dwFlags)
+{
+#ifndef _WIN32
+	return MoveFileExA(lpExistingFileName, lpNewFileName, dwFlags);
+#else
+	BOOL result = FALSE;
+	LPWSTR lpExistingFileNameW = NULL;
+	LPWSTR lpNewFileNameW = NULL;
+
+	if (!lpExistingFileName || !lpNewFileName)
+		return FALSE;
+
+	lpExistingFileNameW = ConvertUtf8ToWCharAlloc(lpExistingFileName, NULL);
+	if (!lpExistingFileNameW)
+		goto cleanup;
+	lpNewFileNameW = ConvertUtf8ToWCharAlloc(lpNewFileName, NULL);
+	if (!lpNewFileNameW)
+		goto cleanup;
+
+	result = MoveFileExW(lpExistingFileNameW, lpNewFileNameW, dwFlags);
 
 cleanup:
 	free(lpExistingFileNameW);
@@ -699,7 +738,8 @@ BOOL winpr_DeleteFile(const char* lpFileName)
 
 	if (lpFileName)
 	{
-		if (ConvertToUnicode(CP_UTF8, 0, lpFileName, -1, &lpFileNameW, 0) < 1)
+		lpFileNameW = ConvertUtf8ToWCharAlloc(lpFileName, NULL);
+		if (!lpFileNameW)
 			goto cleanup;
 	}
 
@@ -721,7 +761,8 @@ BOOL winpr_RemoveDirectory(LPCSTR lpPathName)
 
 	if (lpPathName)
 	{
-		if (ConvertToUnicode(CP_UTF8, 0, lpPathName, -1, &lpPathNameW, 0) < 1)
+		lpPathNameW = ConvertUtf8ToWCharAlloc(lpPathName, NULL);
+		if (!lpPathNameW)
 			goto cleanup;
 	}
 
@@ -735,17 +776,19 @@ cleanup:
 
 BOOL winpr_PathFileExists(const char* pszPath)
 {
+	if (!pszPath)
+		return FALSE;
 #ifndef _WIN32
 	return PathFileExistsA(pszPath);
 #else
-	WCHAR* pszPathW = NULL;
+	WCHAR* pathW = ConvertUtf8ToWCharAlloc(pszPath, NULL);
 	BOOL result = FALSE;
 
-	if (ConvertToUnicode(CP_UTF8, 0, pszPath, -1, &pszPathW, 0) < 1)
+	if (!pathW)
 		return FALSE;
 
-	result = PathFileExistsW(pszPathW);
-	free(pszPathW);
+	result = PathFileExistsW(pathW);
+	free(pathW);
 
 	return result;
 #endif
@@ -753,13 +796,15 @@ BOOL winpr_PathFileExists(const char* pszPath)
 
 BOOL winpr_PathMakePath(const char* path, LPSECURITY_ATTRIBUTES lpAttributes)
 {
+	if (!path)
+		return FALSE;
 #ifndef _WIN32
 	return PathMakePathA(path, lpAttributes);
 #else
-	WCHAR* pathW = NULL;
+	WCHAR* pathW = ConvertUtf8ToWCharAlloc(path, NULL);
 	BOOL result = FALSE;
 
-	if (ConvertToUnicode(CP_UTF8, 0, path, -1, &pathW, 0) < 1)
+	if (!pathW)
 		return FALSE;
 
 	result = SHCreateDirectoryExW(NULL, pathW, lpAttributes) == ERROR_SUCCESS;

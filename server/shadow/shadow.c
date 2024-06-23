@@ -27,14 +27,15 @@
 #include <winpr/tools/makecert.h>
 
 #include <freerdp/server/shadow.h>
+#include <freerdp/settings.h>
+
+#include <freerdp/log.h>
 #define TAG SERVER_TAG("shadow")
 
 int main(int argc, char** argv)
 {
 	int status = 0;
-	DWORD dwExitCode;
-	rdpSettings* settings;
-	rdpShadowServer* server;
+	DWORD dwExitCode = 0;
 	COMMAND_LINE_ARGUMENT_A shadow_args[] = {
 		{ "log-filters", COMMAND_LINE_VALUE_REQUIRED, "<tag>:<level>[,<tag>:<level>[,...]]", NULL,
 		  NULL, -1, NULL, "Set logger filters, see wLog(7) for details" },
@@ -49,10 +50,14 @@ int main(int argc, char** argv)
 		  "localhost" },
 		{ "monitors", COMMAND_LINE_VALUE_OPTIONAL, "<0,1,2...>", NULL, NULL, -1, NULL,
 		  "Select or list monitors" },
+		{ "max-connections", COMMAND_LINE_VALUE_REQUIRED, "<number>", 0, NULL, -1, NULL,
+		  "maximum connections allowed to server, 0 to deactivate" },
 		{ "rect", COMMAND_LINE_VALUE_REQUIRED, "<x,y,w,h>", NULL, NULL, -1, NULL,
 		  "Select rectangle within monitor to share" },
-		{ "auth", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueFalse, NULL, -1, NULL,
+		{ "auth", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
 		  "Clients must authenticate" },
+		{ "remote-guard", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueFalse, NULL, -1, NULL,
+		  "Remote credential guard" },
 		{ "may-view", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
 		  "Clients may view without prompt" },
 		{ "may-interact", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
@@ -69,6 +74,12 @@ int main(int argc, char** argv)
 		  "nla extended protocol security" },
 		{ "sam-file", COMMAND_LINE_VALUE_REQUIRED, "<file>", NULL, NULL, -1, NULL,
 		  "NTLM SAM file for NLA authentication" },
+		{ "keytab", COMMAND_LINE_VALUE_REQUIRED, "<file>", NULL, NULL, -1, NULL,
+		  "Kerberos keytab file for NLA authentication" },
+		{ "ccache", COMMAND_LINE_VALUE_REQUIRED, "<file>", NULL, NULL, -1, NULL,
+		  "Kerberos host ccache file for NLA authentication" },
+		{ "tls-secrets-file", COMMAND_LINE_VALUE_REQUIRED, "<file>", NULL, NULL, -1, NULL,
+		  "file where tls secrets shall be stored" },
 		{ "gfx-progressive", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
 		  "Allow GFX progressive codec" },
 		{ "gfx-rfx", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
@@ -90,55 +101,57 @@ int main(int argc, char** argv)
 
 	shadow_subsystem_set_entry_builtin(NULL);
 
-	server = shadow_server_new();
+	rdpShadowServer* server = shadow_server_new();
 
 	if (!server)
 	{
 		status = -1;
 		WLog_ERR(TAG, "Server new failed");
-		goto fail_server_new;
+		goto fail;
 	}
 
-	settings = server->settings;
+	rdpSettings* settings = server->settings;
+	WINPR_ASSERT(settings);
 
-	settings->NlaSecurity = TRUE;
-	settings->TlsSecurity = TRUE;
-	settings->RdpSecurity = TRUE;
+	if (!freerdp_settings_set_bool(settings, FreeRDP_NlaSecurity, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_TlsSecurity, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_RdpSecurity, TRUE))
+		goto fail;
 
 	/* By default allow all GFX modes.
 	 * This can be changed with command line flags [+|-]gfx-CODEC
 	 */
-	freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 32);
-	freerdp_settings_set_bool(settings, FreeRDP_NSCodec, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_GfxH264, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_GfxProgressive, TRUE);
-	freerdp_settings_set_bool(settings, FreeRDP_GfxProgressiveV2, TRUE);
+	if (!freerdp_settings_set_uint32(settings, FreeRDP_ColorDepth, 32) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_NSCodec, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_RemoteFxCodec, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_GfxH264, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_GfxAVC444v2, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_GfxProgressive, TRUE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_GfxProgressiveV2, TRUE))
+		goto fail;
 
-#ifdef WITH_SHADOW_X11
-	server->authentication = TRUE;
-#else
-	server->authentication = FALSE;
-#endif
+	/* TODO: We do not implement relative mouse callbacks, so deactivate it for now */
+	if (!freerdp_settings_set_bool(settings, FreeRDP_MouseUseRelativeMove, FALSE) ||
+	    !freerdp_settings_set_bool(settings, FreeRDP_HasRelativeMouseEvent, FALSE))
+		goto fail;
 
 	if ((status = shadow_server_parse_command_line(server, argc, argv, shadow_args)) < 0)
 	{
 		shadow_server_command_line_status_print(server, argc, argv, status, shadow_args);
-		goto fail_parse_command_line;
+		goto fail;
 	}
 
 	if ((status = shadow_server_init(server)) < 0)
 	{
 		WLog_ERR(TAG, "Server initialization failed.");
-		goto fail_server_init;
+		goto fail;
 	}
 
 	if ((status = shadow_server_start(server)) < 0)
 	{
 		WLog_ERR(TAG, "Failed to start server.");
-		goto fail_server_start;
+		goto fail;
 	}
 
 #ifdef _WIN32
@@ -159,11 +172,8 @@ int main(int argc, char** argv)
 	else
 		status = (int)dwExitCode;
 
-fail_server_start:
+fail:
 	shadow_server_uninit(server);
-fail_server_init:
-fail_parse_command_line:
 	shadow_server_free(server);
-fail_server_new:
 	return status;
 }

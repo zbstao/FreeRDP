@@ -685,9 +685,9 @@ static BOOL freerdp_get_system_language_and_country_codes(char* language, size_t
 	}
 #else
 	{
-		int dot;
-		DWORD nSize;
-		int underscore;
+		size_t dot = 0;
+		DWORD nSize = 0;
+		size_t underscore = 0;
 		char* env_lang = NULL;
 		LPCSTR lang = "LANG";
 		/* LANG = <language>_<country>.<encoding> */
@@ -718,7 +718,7 @@ static BOOL freerdp_get_system_language_and_country_codes(char* language, size_t
 		else
 		{
 			/* Get language code */
-			size_t len = MIN(languageLen - 1, underscore);
+			size_t len = MIN(languageLen - 1u, underscore);
 			strncpy(language, env_lang, len);
 			language[len] = '\0';
 		}
@@ -746,7 +746,6 @@ static BOOL freerdp_get_system_language_and_country_codes(char* language, size_t
 
 static const SYSTEM_LOCALE* freerdp_detect_system_locale(void)
 {
-	size_t i;
 	char language[LOCALE_LANGUAGE_LEN] = { 0 };
 	char country[LOCALE_COUNTRY_LEN] = { 0 };
 	const SYSTEM_LOCALE* locale = NULL;
@@ -754,7 +753,7 @@ static const SYSTEM_LOCALE* freerdp_detect_system_locale(void)
 	freerdp_get_system_language_and_country_codes(language, ARRAYSIZE(language), country,
 	                                              ARRAYSIZE(country));
 
-	for (i = 0; i < ARRAYSIZE(SYSTEM_LOCALE_TABLE); i++)
+	for (size_t i = 0; i < ARRAYSIZE(SYSTEM_LOCALE_TABLE); i++)
 	{
 		const SYSTEM_LOCALE* current = &SYSTEM_LOCALE_TABLE[i];
 
@@ -770,7 +769,7 @@ static const SYSTEM_LOCALE* freerdp_detect_system_locale(void)
 
 DWORD freerdp_get_system_locale_id(void)
 {
-	const SYSTEM_LOCALE* locale;
+	const SYSTEM_LOCALE* locale = NULL;
 	locale = freerdp_detect_system_locale();
 
 	if (locale != NULL)
@@ -781,9 +780,7 @@ DWORD freerdp_get_system_locale_id(void)
 
 const char* freerdp_get_system_locale_name_from_id(DWORD localeId)
 {
-	size_t index;
-
-	for (index = 0; index < ARRAYSIZE(LOCALE_NAME_TABLE); index++)
+	for (size_t index = 0; index < ARRAYSIZE(LOCALE_NAME_TABLE); index++)
 	{
 		const LOCALE_NAME* const current = &LOCALE_NAME_TABLE[index];
 
@@ -796,10 +793,8 @@ const char* freerdp_get_system_locale_name_from_id(DWORD localeId)
 
 int freerdp_detect_keyboard_layout_from_system_locale(DWORD* keyboardLayoutId)
 {
-	size_t i, j;
 	char language[LOCALE_LANGUAGE_LEN] = { 0 };
 	char country[LOCALE_COUNTRY_LEN] = { 0 };
-	const SYSTEM_LOCALE* locale;
 
 	freerdp_get_system_language_and_country_codes(language, ARRAYSIZE(language), country,
 	                                              ARRAYSIZE(country));
@@ -810,21 +805,22 @@ int freerdp_detect_keyboard_layout_from_system_locale(DWORD* keyboardLayoutId)
 		return 0;
 	}
 
-	locale = freerdp_detect_system_locale();
+	const SYSTEM_LOCALE* locale = freerdp_detect_system_locale();
 
 	if (!locale)
 		return -1;
 
 	DEBUG_KBD("Found locale : %s_%s", locale->language, locale->country);
 
-	for (i = 0; i < ARRAYSIZE(LOCALE_KEYBOARD_LAYOUTS_TABLE); i++)
+	for (size_t i = 0; i < ARRAYSIZE(LOCALE_KEYBOARD_LAYOUTS_TABLE); i++)
 	{
 		const LOCALE_KEYBOARD_LAYOUTS* const current = &LOCALE_KEYBOARD_LAYOUTS_TABLE[i];
+		WINPR_ASSERT(current);
 
 		if (current->locale == locale->code)
 		{
 			/* Locale found in list of default keyboard layouts */
-			for (j = 0; j < 5; j++)
+			for (size_t j = 0; j < 5; j++)
 			{
 				if (current->keyboardLayouts[j] == ENGLISH_UNITED_STATES)
 				{
@@ -832,28 +828,25 @@ int freerdp_detect_keyboard_layout_from_system_locale(DWORD* keyboardLayoutId)
 				}
 				else if (current->keyboardLayouts[j] == 0)
 				{
-					break; /* No more keyboard layouts */
+					/*
+					 * If we skip the ENGLISH_UNITED_STATES keyboard layout but there are no
+					 * other possible keyboard layout for the locale, we end up here with k > 1
+					 */
+
+					if (j >= 1)
+					{
+						*keyboardLayoutId = ENGLISH_UNITED_STATES;
+						return 0;
+					}
+
+					/* No more keyboard layouts */
+					break;
 				}
 				else
 				{
 					*keyboardLayoutId = current->keyboardLayouts[j];
 					return 0;
 				}
-			}
-
-			/*
-			 * If we skip the ENGLISH_UNITED_STATES keyboard layout but there are no
-			 * other possible keyboard layout for the locale, we end up here with k > 1
-			 */
-
-			if (j >= 1)
-			{
-				*keyboardLayoutId = ENGLISH_UNITED_STATES;
-				return 0;
-			}
-			else
-			{
-				return -1;
 			}
 		}
 	}

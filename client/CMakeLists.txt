@@ -17,7 +17,11 @@
 
 # Clients
 
-add_subdirectory(common)
+include(CMakeDependentOption)
+
+if(WITH_CLIENT_COMMON)
+	add_subdirectory(common)
+endif()
 
 if(FREERDP_VENDOR AND WITH_CLIENT)
 	if(WIN32 AND NOT UWP)
@@ -27,6 +31,10 @@ if(FREERDP_VENDOR AND WITH_CLIENT)
 			add_subdirectory(Sample)
 		endif()
 	endif()
+
+	if (WITH_CLIENT_SDL)
+        add_subdirectory(SDL)
+    endif()
 
 	if(WITH_X11)
 		add_subdirectory(X11)
@@ -81,8 +89,14 @@ if(WITH_CLIENT)
 	endforeach()
 endif()
 
+if (WITH_FUSE)
+    list(APPEND FREERDP_CLIENT_PC_PRIVATE_LIBS "-lfuse3")
+endif()
+
+list(JOIN FREERDP_CLIENT_PC_PRIVATE_LIBS " " FREERDP_CLIENT_PC_PRIVATE_LIBS)
+include(pkg-config-install-prefix)
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/freerdp-client.pc.in ${CMAKE_CURRENT_BINARY_DIR}/freerdp-client${FREERDP_VERSION_MAJOR}.pc @ONLY)
-install(FILES ${CMAKE_CURRENT_BINARY_DIR}/freerdp-client${FREERDP_VERSION_MAJOR}.pc DESTINATION ${CMAKE_INSTALL_LIBDIR}/pkgconfig)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/freerdp-client${FREERDP_VERSION_MAJOR}.pc DESTINATION ${PKG_CONFIG_PC_INSTALL_DIR})
 
 export(PACKAGE freerdp-client)
 

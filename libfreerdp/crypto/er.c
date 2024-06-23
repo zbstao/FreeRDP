@@ -28,7 +28,7 @@
 
 void er_read_length(wStream* s, int* length)
 {
-	BYTE byte;
+	BYTE byte = 0;
 
 	Stream_Read_UINT8(s, byte);
 
@@ -86,14 +86,14 @@ int er_get_content_length(int length)
 
 /**
  * Read er Universal tag.
- * @param s stream
+ * @param s A pointer to the stream to write to
  * @param tag er universally-defined tag
- * @return
+ * @return \b TRUE for success
  */
 
 BOOL er_read_universal_tag(wStream* s, BYTE tag, BOOL pc)
 {
-	BYTE byte;
+	BYTE byte = 0;
 
 	Stream_Read_UINT8(s, byte);
 
@@ -124,7 +124,7 @@ void er_write_universal_tag(wStream* s, BYTE tag, BOOL pc)
 
 BOOL er_read_application_tag(wStream* s, BYTE tag, int* length)
 {
-	BYTE byte;
+	BYTE byte = 0;
 
 	if (tag > 30)
 	{
@@ -177,7 +177,7 @@ void er_write_application_tag(wStream* s, BYTE tag, int length, BOOL flag)
 
 BOOL er_read_contextual_tag(wStream* s, BYTE tag, int* length, BOOL pc)
 {
-	BYTE byte;
+	BYTE byte = 0;
 
 	Stream_Read_UINT8(s, byte);
 
@@ -205,7 +205,7 @@ int er_skip_contextual_tag(int length)
 
 BOOL er_read_sequence_tag(wStream* s, int* length)
 {
-	BYTE byte;
+	BYTE byte = 0;
 
 	Stream_Read_UINT8(s, byte);
 
@@ -319,14 +319,14 @@ int er_skip_octet_string(int length)
 
 /**
  * Read a er BOOLEAN
- * @param s
- * @param value
+ * @param s A pointer to the stream to read from
+ * @param value A pointer to read the data to
  */
 
 BOOL er_read_BOOL(wStream* s, BOOL* value)
 {
 	int length = 0;
-	BYTE v;
+	BYTE v = 0;
 
 	if (!er_read_universal_tag(s, ER_TAG_BOOLEAN, FALSE))
 		return FALSE;
@@ -340,8 +340,8 @@ BOOL er_read_BOOL(wStream* s, BOOL* value)
 
 /**
  * Write a er BOOLEAN
- * @param s
- * @param value
+ * @param s A pointer to the stream to write to
+ * @param value The value to write
  */
 
 void er_write_BOOL(wStream* s, BOOL value)
@@ -374,7 +374,7 @@ BOOL er_read_integer(wStream* s, UINT32* value)
 	}
 	else if (length == 3)
 	{
-		BYTE byte;
+		BYTE byte = 0;
 		Stream_Read_UINT8(s, byte);
 		Stream_Read_UINT16_BE(s, *value);
 		*value += (byte << 16);
@@ -393,8 +393,8 @@ BOOL er_read_integer(wStream* s, UINT32* value)
 
 /**
  * Write a er INTEGER
- * @param s
- * @param value
+ * @param s A pointer to the stream to write to
+ * @param value the value to write
  */
 
 int er_write_integer(wStream* s, INT32 value)
@@ -419,8 +419,6 @@ int er_write_integer(wStream* s, INT32 value)
 		Stream_Write_UINT32_BE(s, value);
 		return 5;
 	}
-
-	return 0;
 }
 
 int er_skip_integer(INT32 value)
@@ -437,8 +435,6 @@ int er_skip_integer(INT32 value)
 	{
 		return _er_skip_length(4) + 5;
 	}
-
-	return 0;
 }
 
 BOOL er_read_integer_length(wStream* s, int* length)

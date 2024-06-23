@@ -66,9 +66,9 @@ static INLINE void StreamPool_Unlock(wStreamPool* pool)
 static BOOL StreamPool_EnsureCapacity(wStreamPool* pool, size_t count, BOOL usedOrAvailable)
 {
 	size_t new_cap = 0;
-	size_t* cap;
-	size_t* size;
-	wStream*** array;
+	size_t* cap = NULL;
+	size_t* size = NULL;
+	wStream*** array = NULL;
 
 	WINPR_ASSERT(pool);
 
@@ -84,7 +84,7 @@ static BOOL StreamPool_EnsureCapacity(wStreamPool* pool, size_t count, BOOL used
 
 	if (new_cap > 0)
 	{
-		wStream** new_arr;
+		wStream** new_arr = NULL;
 
 		if (*cap < *size + count)
 			*cap += count;
@@ -143,21 +143,15 @@ static void StreamPool_AddUsed(wStreamPool* pool, wStream* s)
 
 static void StreamPool_RemoveUsed(wStreamPool* pool, wStream* s)
 {
-	size_t index;
-	BOOL found = FALSE;
-
 	WINPR_ASSERT(pool);
-	for (index = 0; index < pool->uSize; index++)
+	for (size_t index = 0; index < pool->uSize; index++)
 	{
 		if (pool->uArray[index] == s)
 		{
-			found = TRUE;
+			StreamPool_ShiftUsed(pool, index, -1);
 			break;
 		}
 	}
-
-	if (found)
-		StreamPool_ShiftUsed(pool, index, -1);
 }
 
 static void StreamPool_ShiftAvailable(wStreamPool* pool, size_t index, INT64 count)
@@ -192,8 +186,7 @@ static void StreamPool_ShiftAvailable(wStreamPool* pool, size_t index, INT64 cou
 
 wStream* StreamPool_Take(wStreamPool* pool, size_t size)
 {
-	size_t index;
-	SSIZE_T foundIndex;
+	SSIZE_T foundIndex = -1;
 	wStream* s = NULL;
 
 	StreamPool_Lock(pool);
@@ -201,9 +194,7 @@ wStream* StreamPool_Take(wStreamPool* pool, size_t size)
 	if (size == 0)
 		size = pool->defaultSize;
 
-	foundIndex = -1;
-
-	for (index = 0; index < pool->aSize; index++)
+	for (size_t index = 0; index < pool->aSize; index++)
 	{
 		s = pool->aArray[index];
 
@@ -220,7 +211,7 @@ wStream* StreamPool_Take(wStreamPool* pool, size_t size)
 		if (!s)
 			goto out_fail;
 	}
-	else
+	else if (s)
 	{
 		Stream_SetPosition(s, 0);
 		Stream_SetLength(s, Stream_Capacity(s));
@@ -244,6 +235,30 @@ out_fail:
  * Returns an object to the pool.
  */
 
+static void StreamPool_Remove(wStreamPool* pool, wStream* s)
+{
+	StreamPool_EnsureCapacity(pool, 1, FALSE);
+	Stream_EnsureValidity(s);
+	for (size_t x = 0; x < pool->aSize; x++)
+	{
+		wStream* cs = pool->aArray[x];
+
+		WINPR_ASSERT(cs != s);
+	}
+	pool->aArray[(pool->aSize)++] = s;
+	StreamPool_RemoveUsed(pool, s);
+}
+
+static void StreamPool_ReleaseOrReturn(wStreamPool* pool, wStream* s)
+{
+	StreamPool_Lock(pool);
+	if (s->count > 0)
+		s->count--;
+	if (s->count == 0)
+		StreamPool_Remove(pool, s);
+	StreamPool_Unlock(pool);
+}
+
 void StreamPool_Return(wStreamPool* pool, wStream* s)
 {
 	WINPR_ASSERT(pool);
@@ -251,14 +266,7 @@ void StreamPool_Return(wStreamPool* pool, wStream* s)
 		return;
 
 	StreamPool_Lock(pool);
-
-	StreamPool_EnsureCapacity(pool, 1, FALSE);
-	{
-		Stream_EnsureValidity(s);
-		pool->aArray[(pool->aSize)++] = s;
-		StreamPool_RemoveUsed(pool, s);
-	}
-
+	StreamPool_Remove(pool, s);
 	StreamPool_Unlock(pool);
 }
 
@@ -283,18 +291,9 @@ void Stream_AddRef(wStream* s)
 
 void Stream_Release(wStream* s)
 {
-	DWORD count;
-
 	WINPR_ASSERT(s);
 	if (s->pool)
-	{
-		StreamPool_Lock(s->pool);
-		count = --(s->count);
-		StreamPool_Unlock(s->pool);
-
-		if (count == 0)
-			StreamPool_Return(s->pool, s);
-	}
+		StreamPool_ReleaseOrReturn(s->pool, s);
 }
 
 /**
@@ -303,13 +302,12 @@ void Stream_Release(wStream* s)
 
 wStream* StreamPool_Find(wStreamPool* pool, BYTE* ptr)
 {
-	size_t index;
 	wStream* s = NULL;
 	BOOL found = FALSE;
 
 	StreamPool_Lock(pool);
 
-	for (index = 0; index < pool->uSize; index++)
+	for (size_t index = 0; index < pool->uSize; index++)
 	{
 		s = pool->uArray[index];
 
@@ -335,14 +333,14 @@ void StreamPool_Clear(wStreamPool* pool)
 
 	while (pool->aSize > 0)
 	{
-		(pool->aSize)--;
-		Stream_Free(pool->aArray[pool->aSize], TRUE);
+		wStream* s = pool->aArray[--pool->aSize];
+		Stream_Free(s, s->isAllocatedStream);
 	}
 
 	while (pool->uSize > 0)
 	{
-		(pool->uSize)--;
-		Stream_Free(pool->uArray[pool->uSize], TRUE);
+		wStream* s = pool->uArray[--pool->uSize];
+		Stream_Free(s, s->isAllocatedStream);
 	}
 
 	StreamPool_Unlock(pool);
@@ -373,7 +371,10 @@ wStreamPool* StreamPool_New(BOOL synchronized, size_t defaultSize)
 
 	return pool;
 fail:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
 	StreamPool_Free(pool);
+	WINPR_PRAGMA_DIAG_POP
 	return NULL;
 }
 

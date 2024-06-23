@@ -12,14 +12,14 @@ typedef struct
 
 int TestInterlockedSList(int argc, char* argv[])
 {
-	ULONG Count;
-	WINPR_PSLIST_ENTRY pFirstEntry;
-	WINPR_PSLIST_HEADER pListHead;
+	ULONG Count = 0;
+	WINPR_PSLIST_ENTRY pFirstEntry = NULL;
+	WINPR_PSLIST_HEADER pListHead = NULL;
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
 	/* Initialize the list header to a MEMORY_ALLOCATION_ALIGNMENT boundary. */
-	pListHead = (WINPR_PSLIST_HEADER)_aligned_malloc(sizeof(WINPR_SLIST_HEADER),
-	                                                 MEMORY_ALLOCATION_ALIGNMENT);
+	pListHead = (WINPR_PSLIST_HEADER)winpr_aligned_malloc(sizeof(WINPR_SLIST_HEADER),
+	                                                      MEMORY_ALLOCATION_ALIGNMENT);
 
 	if (!pListHead)
 	{
@@ -33,7 +33,7 @@ int TestInterlockedSList(int argc, char* argv[])
 	for (Count = 1; Count <= 10; Count += 1)
 	{
 		PPROGRAM_ITEM pProgramItem =
-		    (PPROGRAM_ITEM)_aligned_malloc(sizeof(PROGRAM_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
+		    (PPROGRAM_ITEM)winpr_aligned_malloc(sizeof(PROGRAM_ITEM), MEMORY_ALLOCATION_ALIGNMENT);
 
 		if (!pProgramItem)
 		{
@@ -48,7 +48,7 @@ int TestInterlockedSList(int argc, char* argv[])
 	/* Remove 10 items from the list and display the signature. */
 	for (Count = 10; Count >= 1; Count -= 1)
 	{
-		PPROGRAM_ITEM pProgramItem;
+		PPROGRAM_ITEM pProgramItem = NULL;
 		WINPR_PSLIST_ENTRY pListEntry = InterlockedPopEntrySList(pListHead);
 
 		if (!pListEntry)
@@ -67,7 +67,7 @@ int TestInterlockedSList(int argc, char* argv[])
 		 * of the structure before calling the free function.
 		 */
 
-		_aligned_free(pListEntry);
+		winpr_aligned_free(pListEntry);
 	}
 
 	/* Flush the list and verify that the items are gone. */
@@ -79,7 +79,7 @@ int TestInterlockedSList(int argc, char* argv[])
 		return -1;
 	}
 
-	_aligned_free(pListHead);
+	winpr_aligned_free(pListHead);
 
 	return 0;
 }

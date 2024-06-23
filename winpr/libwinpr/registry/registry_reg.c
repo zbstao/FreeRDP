@@ -88,8 +88,8 @@ static char* reg_data_type_string(DWORD type)
 
 static BOOL reg_load_start(Reg* reg)
 {
-	char* buffer;
-	INT64 file_size;
+	char* buffer = NULL;
+	INT64 file_size = 0;
 
 	WINPR_ASSERT(reg);
 	WINPR_ASSERT(reg->fp);
@@ -132,12 +132,11 @@ static void reg_load_finish(Reg* reg)
 
 static RegVal* reg_load_value(const Reg* reg, RegKey* key)
 {
-	size_t index;
 	const char* p[5] = { 0 };
-	size_t length;
+	size_t length = 0;
 	char* name = NULL;
-	const char* type;
-	const char* data;
+	const char* type = NULL;
+	const char* data = NULL;
 	RegVal* value = NULL;
 
 	WINPR_ASSERT(reg);
@@ -179,7 +178,7 @@ static RegVal* reg_load_value(const Reg* reg, RegKey* key)
 	value->name = name;
 	value->type = REG_NONE;
 
-	for (index = 0; index < ARRAYSIZE(REG_DATA_TYPE_TABLE); index++)
+	for (size_t index = 0; index < ARRAYSIZE(REG_DATA_TYPE_TABLE); index++)
 	{
 		const struct reg_data_type* current = &REG_DATA_TYPE_TABLE[index];
 		WINPR_ASSERT(current->tag);
@@ -197,7 +196,7 @@ static RegVal* reg_load_value(const Reg* reg, RegKey* key)
 	{
 		case REG_DWORD:
 		{
-			unsigned long val;
+			unsigned long val = 0;
 			errno = 0;
 			val = strtoul(data, NULL, 0);
 
@@ -208,26 +207,27 @@ static RegVal* reg_load_value(const Reg* reg, RegKey* key)
 			}
 			value->data.dword = (DWORD)val;
 		}
-		    break;
-			case REG_QWORD:
+		break;
+		case REG_QWORD:
+		{
+			unsigned long long val = 0;
+			errno = 0;
+			val = strtoull(data, NULL, 0);
+
+			if ((errno != 0) || (val > UINT64_MAX))
 			{
-				unsigned long long val;
-				errno = 0;
-				val = strtoull(data, NULL, 0);
-
-				if ((errno != 0) || (val > UINT64_MAX))
-				{
-					WLog_WARN(TAG, "%s::%s value %s invalid", key->name, value->name, data);
-					goto fail;
-				}
-
-				value->data.qword = (UINT64)val;
+				WLog_WARN(TAG, "%s::%s value %s invalid", key->name, value->name, data);
+				goto fail;
 			}
+
+			value->data.qword = (UINT64)val;
+		}
 		break;
 		case REG_SZ:
 		{
-			size_t len, cmp;
-			char* end;
+			size_t len = 0;
+			size_t cmp = 0;
+			char* end = NULL;
 			char* start = strchr(data, '"');
 			if (!start)
 				goto fail;
@@ -252,9 +252,9 @@ static RegVal* reg_load_value(const Reg* reg, RegKey* key)
 		break;
 		default:
 			WLog_ERR(TAG, "[%s] %s unimplemented format: %s", key->name, value->name,
-				     reg_data_type_string(value->type));
+			         reg_data_type_string(value->type));
 			break;
-		}
+	}
 
 	if (!key->values)
 	{
@@ -348,8 +348,8 @@ static void reg_insert_key(Reg* reg, RegKey* key, RegKey* subkey)
 static RegKey* reg_load_key(Reg* reg, RegKey* key)
 {
 	char* p[2];
-	size_t length;
-	RegKey* subkey;
+	size_t length = 0;
+	RegKey* subkey = NULL;
 
 	WINPR_ASSERT(reg);
 	WINPR_ASSERT(key);
@@ -450,7 +450,7 @@ static void reg_unload_value(Reg* reg, RegVal* value)
 
 static void reg_unload_key(Reg* reg, RegKey* key)
 {
-	RegVal* pValue;
+	RegVal* pValue = NULL;
 
 	WINPR_ASSERT(reg);
 	WINPR_ASSERT(key);
@@ -470,12 +470,10 @@ static void reg_unload_key(Reg* reg, RegKey* key)
 
 static void reg_unload(Reg* reg)
 {
-	RegKey* pKey;
-
 	WINPR_ASSERT(reg);
 	if (reg->root_key)
 	{
-		pKey = reg->root_key->subkeys;
+		RegKey* pKey = reg->root_key->subkeys;
 
 		while (pKey != NULL)
 		{

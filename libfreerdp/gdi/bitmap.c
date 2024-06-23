@@ -42,8 +42,7 @@
 #define TAG FREERDP_TAG("gdi.bitmap")
 
 /**
- * Get pixel at the given coordinates.\n
- * @msdn{dd144909}
+ * Get pixel at the given coordinates. msdn{dd144909}
  * @param hdc device context
  * @param nXPos pixel x position
  * @param nYPos pixel y position
@@ -53,30 +52,31 @@
 UINT32 gdi_GetPixel(HGDI_DC hdc, UINT32 nXPos, UINT32 nYPos)
 {
 	HGDI_BITMAP hBmp = (HGDI_BITMAP)hdc->selectedObject;
-	BYTE* data = &(hBmp->data[(nYPos * hBmp->scanline) + nXPos * GetBytesPerPixel(hBmp->format)]);
-	return ReadColor(data, hBmp->format);
+	BYTE* data =
+	    &(hBmp->data[(nYPos * hBmp->scanline) + nXPos * FreeRDPGetBytesPerPixel(hBmp->format)]);
+	return FreeRDPReadColor(data, hBmp->format);
 }
 
 BYTE* gdi_GetPointer(HGDI_BITMAP hBmp, UINT32 X, UINT32 Y)
 {
-	UINT32 bpp = GetBytesPerPixel(hBmp->format);
+	UINT32 bpp = FreeRDPGetBytesPerPixel(hBmp->format);
 	return &hBmp->data[(Y * hBmp->width * bpp) + X * bpp];
 }
 
 /**
- * Set pixel at the given coordinates.\n
- * @msdn{dd145078}
- * @param hdc device context
+ * Set pixel at the given coordinates. msdn{dd145078}
+ *
+ * @param hBmp device context
  * @param X pixel x position
  * @param Y pixel y position
  * @param crColor new pixel color
- * @return
+ * @return the color written
  */
 
 static INLINE UINT32 gdi_SetPixelBmp(HGDI_BITMAP hBmp, UINT32 X, UINT32 Y, UINT32 crColor)
 {
-	BYTE* p = &hBmp->data[(Y * hBmp->scanline) + X * GetBytesPerPixel(hBmp->format)];
-	WriteColor(p, hBmp->format, crColor);
+	BYTE* p = &hBmp->data[(Y * hBmp->scanline) + X * FreeRDPGetBytesPerPixel(hBmp->format)];
+	FreeRDPWriteColor(p, hBmp->format, crColor);
 	return crColor;
 }
 
@@ -87,20 +87,30 @@ UINT32 gdi_SetPixel(HGDI_DC hdc, UINT32 X, UINT32 Y, UINT32 crColor)
 }
 
 /**
- * Create a new bitmap with the given width, height, color format and pixel buffer.\n
- * @msdn{dd183485}
+ * Create a new bitmap with the given width, height, color format and pixel buffer. msdn{dd183485}
+ *
  * @param nWidth width
  * @param nHeight height
- * @param cBitsPerPixel bits per pixel
+ * @param format the color format used
  * @param data pixel buffer
- * @param fkt_free The function used for deallocation of the buffer, NULL for none.
  * @return new bitmap
  */
 
 HGDI_BITMAP gdi_CreateBitmap(UINT32 nWidth, UINT32 nHeight, UINT32 format, BYTE* data)
 {
-	return gdi_CreateBitmapEx(nWidth, nHeight, format, 0, data, _aligned_free);
+	return gdi_CreateBitmapEx(nWidth, nHeight, format, 0, data, winpr_aligned_free);
 }
+
+/**
+ * Create a new bitmap with the given width, height, color format and pixel buffer. msdn{dd183485}
+ *
+ * @param nWidth width
+ * @param nHeight height
+ * @param format the color format used
+ * @param data pixel buffer
+ * @param fkt_free The function used for deallocation of the buffer, NULL for none.
+ * @return new bitmap
+ */
 
 HGDI_BITMAP gdi_CreateBitmapEx(UINT32 nWidth, UINT32 nHeight, UINT32 format, UINT32 stride,
                                BYTE* data, void (*fkt_free)(void*))
@@ -116,7 +126,7 @@ HGDI_BITMAP gdi_CreateBitmapEx(UINT32 nWidth, UINT32 nHeight, UINT32 format, UIN
 	if (stride > 0)
 		hBitmap->scanline = stride;
 	else
-		hBitmap->scanline = nWidth * GetBytesPerPixel(hBitmap->format);
+		hBitmap->scanline = nWidth * FreeRDPGetBytesPerPixel(hBitmap->format);
 
 	hBitmap->width = nWidth;
 	hBitmap->height = nHeight;
@@ -126,11 +136,13 @@ HGDI_BITMAP gdi_CreateBitmapEx(UINT32 nWidth, UINT32 nHeight, UINT32 format, UIN
 }
 
 /**
- * Create a new bitmap of the given width and height compatible with the current device context.\n
- * @msdn{dd183488}
+ * Create a new bitmap of the given width and height compatible with the current device context.
+ * msdn{dd183488}
+ *
  * @param hdc device context
  * @param nWidth width
  * @param nHeight height
+ *
  * @return new bitmap
  */
 
@@ -145,9 +157,9 @@ HGDI_BITMAP gdi_CreateCompatibleBitmap(HGDI_DC hdc, UINT32 nWidth, UINT32 nHeigh
 	hBitmap->format = hdc->format;
 	hBitmap->width = nWidth;
 	hBitmap->height = nHeight;
-	hBitmap->data =
-	    _aligned_malloc(nWidth * nHeight * GetBytesPerPixel(hBitmap->format) * 1ULL, 16);
-	hBitmap->free = _aligned_free;
+	hBitmap->data = winpr_aligned_malloc(
+	    1ull * nWidth * nHeight * FreeRDPGetBytesPerPixel(hBitmap->format), 16);
+	hBitmap->free = winpr_aligned_free;
 
 	if (!hBitmap->data)
 	{
@@ -155,7 +167,7 @@ HGDI_BITMAP gdi_CreateCompatibleBitmap(HGDI_DC hdc, UINT32 nWidth, UINT32 nHeigh
 		return NULL;
 	}
 
-	hBitmap->scanline = nWidth * GetBytesPerPixel(hBitmap->format);
+	hBitmap->scanline = nWidth * FreeRDPGetBytesPerPixel(hBitmap->format);
 	return hBitmap;
 }
 
@@ -270,8 +282,8 @@ static INLINE BOOL BitBlt_write(HGDI_DC hdcDest, HGDI_DC hdcSrc, INT32 nXDest, I
                                 BOOL usePat, UINT32 style, const char* rop,
                                 const gdiPalette* palette)
 {
-	UINT32 dstColor;
-	UINT32 colorA;
+	UINT32 dstColor = 0;
+	UINT32 colorA = 0;
 	UINT32 colorB = 0;
 	UINT32 colorC = 0;
 	const INT32 dstX = nXDest + x;
@@ -284,7 +296,7 @@ static INLINE BOOL BitBlt_write(HGDI_DC hdcDest, HGDI_DC hdcSrc, INT32 nXDest, I
 		return FALSE;
 	}
 
-	colorA = ReadColor(dstp, hdcDest->format);
+	colorA = FreeRDPReadColor(dstp, hdcDest->format);
 
 	if (useSrc)
 	{
@@ -296,7 +308,7 @@ static INLINE BOOL BitBlt_write(HGDI_DC hdcDest, HGDI_DC hdcSrc, INT32 nXDest, I
 			return FALSE;
 		}
 
-		colorC = ReadColor(srcp, hdcSrc->format);
+		colorC = FreeRDPReadColor(srcp, hdcSrc->format);
 		colorC = FreeRDPConvertColor(colorC, hdcSrc->format, hdcDest->format, palette);
 	}
 
@@ -319,7 +331,7 @@ static INLINE BOOL BitBlt_write(HGDI_DC hdcDest, HGDI_DC hdcSrc, INT32 nXDest, I
 					return FALSE;
 				}
 
-				colorB = ReadColor(patp, hdcDest->format);
+				colorB = FreeRDPReadColor(patp, hdcDest->format);
 			}
 			break;
 
@@ -329,14 +341,15 @@ static INLINE BOOL BitBlt_write(HGDI_DC hdcDest, HGDI_DC hdcSrc, INT32 nXDest, I
 	}
 
 	dstColor = process_rop(colorC, colorA, colorB, rop, hdcDest->format);
-	return WriteColor(dstp, hdcDest->format, dstColor);
+	return FreeRDPWriteColor(dstp, hdcDest->format, dstColor);
 }
 
 static BOOL adjust_src_coordinates(HGDI_DC hdcSrc, INT32 nWidth, INT32 nHeight, INT32* px,
                                    INT32* py)
 {
-	HGDI_BITMAP hSrcBmp;
-	INT32 nXSrc, nYSrc;
+	HGDI_BITMAP hSrcBmp = NULL;
+	INT32 nXSrc = 0;
+	INT32 nYSrc = 0;
 
 	if (!hdcSrc || (nWidth < 0) || (nHeight < 0) || !px || !py)
 		return FALSE;
@@ -377,10 +390,15 @@ static BOOL adjust_src_coordinates(HGDI_DC hdcSrc, INT32 nWidth, INT32 nHeight, 
 static BOOL adjust_src_dst_coordinates(HGDI_DC hdcDest, INT32* pnXSrc, INT32* pnYSrc, INT32* pnXDst,
                                        INT32* pnYDst, INT32* pnWidth, INT32* pnHeight)
 {
-	HGDI_BITMAP hDstBmp;
-	volatile INT32 diffX, diffY;
-	volatile INT32 nXSrc, nYSrc;
-	volatile INT32 nXDst, nYDst, nWidth, nHeight;
+	HGDI_BITMAP hDstBmp = NULL;
+	volatile INT32 diffX = 0;
+	volatile INT32 diffY = 0;
+	volatile INT32 nXSrc = 0;
+	volatile INT32 nYSrc = 0;
+	volatile INT32 nXDst = 0;
+	volatile INT32 nYDst = 0;
+	volatile INT32 nWidth = 0;
+	volatile INT32 nHeight = 0;
 
 	if (!hdcDest || !pnXSrc || !pnYSrc || !pnXDst || !pnYDst || !pnWidth || !pnHeight)
 		return FALSE;
@@ -441,7 +459,6 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
                            HGDI_DC hdcSrc, INT32 nXSrc, INT32 nYSrc, const char* rop,
                            const gdiPalette* palette)
 {
-	INT32 x, y;
 	UINT32 style = 0;
 	BOOL useSrc = FALSE;
 	BOOL usePat = FALSE;
@@ -498,9 +515,9 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 
 	if ((nXDest > nXSrc) && (nYDest > nYSrc))
 	{
-		for (y = nHeight - 1; y >= 0; y--)
+		for (INT32 y = nHeight - 1; y >= 0; y--)
 		{
-			for (x = nWidth - 1; x >= 0; x--)
+			for (INT32 x = nWidth - 1; x >= 0; x--)
 			{
 				if (!BitBlt_write(hdcDest, hdcSrc, nXDest, nYDest, nXSrc, nYSrc, x, y, useSrc,
 				                  usePat, style, rop, palette))
@@ -510,9 +527,9 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 	}
 	else if (nXDest > nXSrc)
 	{
-		for (y = 0; y < nHeight; y++)
+		for (INT32 y = 0; y < nHeight; y++)
 		{
-			for (x = nWidth - 1; x >= 0; x--)
+			for (INT32 x = nWidth - 1; x >= 0; x--)
 			{
 				if (!BitBlt_write(hdcDest, hdcSrc, nXDest, nYDest, nXSrc, nYSrc, x, y, useSrc,
 				                  usePat, style, rop, palette))
@@ -522,9 +539,9 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 	}
 	else if (nYDest > nYSrc)
 	{
-		for (y = nHeight - 1; y >= 0; y--)
+		for (INT32 y = nHeight - 1; y >= 0; y--)
 		{
-			for (x = 0; x < nWidth; x++)
+			for (INT32 x = 0; x < nWidth; x++)
 			{
 				if (!BitBlt_write(hdcDest, hdcSrc, nXDest, nYDest, nXSrc, nYSrc, x, y, useSrc,
 				                  usePat, style, rop, palette))
@@ -534,9 +551,9 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 	}
 	else
 	{
-		for (y = 0; y < nHeight; y++)
+		for (INT32 y = 0; y < nHeight; y++)
 		{
-			for (x = 0; x < nWidth; x++)
+			for (INT32 x = 0; x < nWidth; x++)
 			{
 				if (!BitBlt_write(hdcDest, hdcSrc, nXDest, nYDest, nXSrc, nYSrc, x, y, useSrc,
 				                  usePat, style, rop, palette))
@@ -549,8 +566,9 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 }
 
 /**
- * Perform a bit blit operation on the given pixel buffers.\n
- * @msdn{dd183370}
+ * Perform a bit blit operation on the given pixel buffers.
+ * msdn{dd183370}
+ *
  * @param hdcDest destination device context
  * @param nXDest destination x1
  * @param nYDest destination y1
@@ -565,7 +583,8 @@ static BOOL BitBlt_process(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nW
 BOOL gdi_BitBlt(HGDI_DC hdcDest, INT32 nXDest, INT32 nYDest, INT32 nWidth, INT32 nHeight,
                 HGDI_DC hdcSrc, INT32 nXSrc, INT32 nYSrc, DWORD rop, const gdiPalette* palette)
 {
-	HGDI_BITMAP hSrcBmp, hDstBmp;
+	HGDI_BITMAP hSrcBmp = NULL;
+	HGDI_BITMAP hDstBmp = NULL;
 
 	if (!hdcDest)
 		return FALSE;

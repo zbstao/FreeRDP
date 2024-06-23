@@ -20,8 +20,12 @@
 #include <ctype.h>
 #include <errno.h>
 
+#include <openssl/err.h>
+
+#include "settings.h"
 #include "proxy.h"
 #include <freerdp/settings.h>
+#include <freerdp/utils/proxy_utils.h>
 #include <freerdp/crypto/crypto.h>
 #include "tcp.h"
 
@@ -29,6 +33,8 @@
 #include <winpr/environment.h> /* For GetEnvironmentVariableA */
 
 #define CRLF "\r\n"
+
+#include <freerdp/log.h>
 #define TAG FREERDP_TAG("core.proxy")
 
 /* SOCKS Proxy auth methods by rfc1928 */
@@ -69,7 +75,6 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
                                 const char* proxyPassword, const char* hostname, UINT16 port);
 static void proxy_read_environment(rdpSettings* settings, char* envname);
-static BOOL proxy_parse_uri(rdpSettings* settings, const char* uri);
 
 BOOL proxy_prepare(rdpSettings* settings, const char** lpPeerHostname, UINT16* lpPeerPort,
                    const char** lpProxyUsername, const char** lpProxyPassword)
@@ -102,9 +107,31 @@ BOOL proxy_prepare(rdpSettings* settings, const char** lpPeerHostname, UINT16* l
 	return FALSE;
 }
 
+static BOOL value_to_int(const char* value, LONGLONG* result, LONGLONG min, LONGLONG max)
+{
+	long long rc = 0;
+
+	if (!value || !result)
+		return FALSE;
+
+	errno = 0;
+	rc = _strtoi64(value, NULL, 0);
+
+	if (errno != 0)
+		return FALSE;
+
+	if ((rc < min) || (rc > max))
+		return FALSE;
+
+	*result = rc;
+	return TRUE;
+}
+
 static BOOL cidr4_match(const struct in_addr* addr, const struct in_addr* net, BYTE bits)
 {
-	uint32_t mask, amask, nmask;
+	uint32_t mask = 0;
+	uint32_t amask = 0;
+	uint32_t nmask = 0;
 
 	if (bits == 0)
 		return TRUE;
@@ -120,7 +147,8 @@ static BOOL cidr6_match(const struct in6_addr* address, const struct in6_addr* n
 {
 	const uint32_t* a = (const uint32_t*)address;
 	const uint32_t* n = (const uint32_t*)network;
-	size_t bits_whole, bits_incomplete;
+	size_t bits_whole = 0;
+	size_t bits_incomplete = 0;
 	bits_whole = bits >> 5;
 	bits_incomplete = bits & 0x1F;
 
@@ -145,10 +173,10 @@ static BOOL check_no_proxy(rdpSettings* settings, const char* no_proxy)
 {
 	const char* delimiter = ",";
 	BOOL result = FALSE;
-	char* current;
-	char* copy;
+	char* current = NULL;
+	char* copy = NULL;
 	char* context = NULL;
-	size_t host_len;
+	size_t host_len = 0;
 	struct sockaddr_in sa4;
 	struct sockaddr_in6 sa6;
 	BOOL is_ipv4 = FALSE;
@@ -217,10 +245,10 @@ static BOOL check_no_proxy(rdpSettings* settings, const char* no_proxy)
 				if (rangedelim != NULL)
 				{
 					const char* range = rangedelim + 1;
-					int sub;
+					unsigned sub = 0;
 					int rc = sscanf(range, "%u", &sub);
 
-					if ((rc == 1) && (rc >= 0))
+					if ((rc == 1) && (rc >= 0) && (sub <= UINT8_MAX))
 					{
 						*rangedelim = '\0';
 
@@ -256,14 +284,12 @@ static BOOL check_no_proxy(rdpSettings* settings, const char* no_proxy)
 
 void proxy_read_environment(rdpSettings* settings, char* envname)
 {
-	DWORD envlen;
-	char* env;
-	envlen = GetEnvironmentVariableA(envname, NULL, 0);
+	const DWORD envlen = GetEnvironmentVariableA(envname, NULL, 0);
 
-	if (!envlen)
+	if (!envlen || (envlen <= 1))
 		return;
 
-	env = calloc(1, envlen);
+	char* env = calloc(1, envlen);
 
 	if (!env)
 	{
@@ -280,12 +306,17 @@ void proxy_read_environment(rdpSettings* settings, char* envname)
 				WLog_INFO(TAG, "deactivating proxy: %s [%s=%s]",
 				          freerdp_settings_get_string(settings, FreeRDP_ServerHostname), envname,
 				          env);
-				freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_NONE);
+				if (!freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_NONE))
+					WLog_WARN(TAG, "failed to set FreeRDP_ProxyType=PROXY_TYPE_NONE");
 			}
 		}
 		else
 		{
-			proxy_parse_uri(settings, env);
+			if (!proxy_parse_uri(settings, env))
+			{
+				WLog_WARN(
+				    TAG, "Error while parsing proxy URI from environment variable; ignoring proxy");
+			}
 		}
 	}
 
@@ -295,26 +326,33 @@ void proxy_read_environment(rdpSettings* settings, char* envname)
 BOOL proxy_parse_uri(rdpSettings* settings, const char* uri_in)
 {
 	BOOL rc = FALSE;
-	char *hostname, *pport;
-	const char* protocol;
-	char* p;
-	UINT16 port;
+	const char* protocol = "";
+	UINT16 port = 0;
+	char* p = NULL;
+	char* atPtr = NULL;
 	char* uri_copy = _strdup(uri_in);
 	char* uri = uri_copy;
 	if (!uri)
-		return FALSE;
+		goto fail;
+
 	p = strstr(uri, "://");
 
 	if (p)
 	{
-		if (p == uri + 4 && !strncmp("http", uri, 4))
+		*p = '\0';
+
+		if (_stricmp("no_proxy", uri) == 0)
+		{
+			if (!freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_IGNORE))
+				goto fail;
+		}
+		if (_stricmp("http", uri) == 0)
 		{
 			if (!freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_HTTP))
 				goto fail;
-
 			protocol = "http";
 		}
-		else if (p == uri + 6 && !strncmp("socks5", uri, 6))
+		else if (_stricmp("socks5", uri) == 0)
 		{
 			if (!freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_SOCKS))
 				goto fail;
@@ -330,43 +368,114 @@ BOOL proxy_parse_uri(rdpSettings* settings, const char* uri_in)
 	}
 	else
 	{
-		WLog_ERR(TAG, "No scheme in proxy URI");
-		goto fail;
+		/* default proxy protocol is http */
+		if (!freerdp_settings_set_uint32(settings, FreeRDP_ProxyType, PROXY_TYPE_HTTP))
+			goto fail;
+		protocol = "http";
 	}
 
-	hostname = uri;
-	pport = strchr(hostname, ':');
+	/* uri is now [user:password@]hostname:port */
+	atPtr = strrchr(uri, '@');
 
-	if (pport)
+	if (atPtr)
 	{
-		long val;
-		errno = 0;
-		val = strtol(pport + 1, NULL, 0);
+		/* got a login / password,
+		 *				 atPtr
+		 *				 v
+		 * [user:password@]hostname:port
+		 *		^
+		 *		colonPtr
+		 */
+		char* colonPtr = strchr(uri, ':');
 
-		if ((errno != 0) || (val <= 0) || (val > UINT16_MAX))
-			return FALSE;
+		if (!colonPtr || (colonPtr > atPtr))
+		{
+			WLog_ERR(TAG, "invalid syntax for proxy (contains no password)");
+			goto fail;
+		}
+
+		*colonPtr = '\0';
+		if (!freerdp_settings_set_string(settings, FreeRDP_ProxyUsername, uri))
+		{
+			WLog_ERR(TAG, "unable to allocate proxy username");
+			goto fail;
+		}
+
+		*atPtr = '\0';
+
+		if (!freerdp_settings_set_string(settings, FreeRDP_ProxyPassword, colonPtr + 1))
+		{
+			WLog_ERR(TAG, "unable to allocate proxy password");
+			goto fail;
+		}
+
+		uri = atPtr + 1;
+	}
+
+	p = strchr(uri, ':');
+
+	if (p)
+	{
+		LONGLONG val = 0;
+
+		if (!value_to_int(&p[1], &val, 0, UINT16_MAX))
+		{
+			WLog_ERR(TAG, "invalid syntax for proxy (invalid port)");
+			goto fail;
+		}
+
+		if (val == 0)
+		{
+			WLog_ERR(TAG, "invalid syntax for proxy (port missing)");
+			goto fail;
+		}
 
 		port = (UINT16)val;
+		*p = '\0';
 	}
 	else
 	{
-		/* The default is 80. Also for Proxys. */
-		port = 80;
-		pport = strchr(hostname, '/');
+		if (_stricmp("http", protocol) == 0)
+		{
+			/* The default is 80. Also for Proxys. */
+			port = 80;
+		}
+		else
+		{
+			port = 1080;
+		}
+
+		WLog_DBG(TAG, "setting default proxy port: %" PRIu16, port);
 	}
-
-	if (pport)
-		*pport = '\0';
-
-	if (!freerdp_settings_set_string(settings, FreeRDP_ProxyHostname, hostname))
-		goto fail;
 
 	if (!freerdp_settings_set_uint16(settings, FreeRDP_ProxyPort, port))
 		goto fail;
 
-	WLog_INFO(TAG, "Parsed proxy configuration: %s://%s:%d", protocol,
-	          freerdp_settings_get_string(settings, FreeRDP_ProxyHostname),
-	          freerdp_settings_get_uint16(settings, FreeRDP_ProxyPort));
+	p = strchr(uri, '/');
+	if (p)
+		*p = '\0';
+	if (!freerdp_settings_set_string(settings, FreeRDP_ProxyHostname, uri))
+		goto fail;
+
+	if (_stricmp("", uri) == 0)
+	{
+		WLog_ERR(TAG, "invalid syntax for proxy (hostname missing)");
+		goto fail;
+	}
+
+	if (freerdp_settings_get_string(settings, FreeRDP_ProxyUsername))
+	{
+		WLog_INFO(TAG, "Parsed proxy configuration: %s://%s:%s@%s:%" PRIu16, protocol,
+		          freerdp_settings_get_string(settings, FreeRDP_ProxyUsername), "******",
+		          freerdp_settings_get_string(settings, FreeRDP_ProxyHostname),
+		          freerdp_settings_get_uint16(settings, FreeRDP_ProxyPort));
+	}
+	else
+	{
+		WLog_INFO(TAG, "Parsed proxy configuration: %s://%s:%" PRIu16, protocol,
+		          freerdp_settings_get_string(settings, FreeRDP_ProxyHostname),
+		          freerdp_settings_get_uint16(settings, FreeRDP_ProxyPort));
+	}
 	rc = TRUE;
 
 fail:
@@ -411,17 +520,17 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
                                const char* proxyPassword, const char* hostname, UINT16 port)
 {
 	BOOL rc = FALSE;
-	int status;
-	wStream* s;
+	int status = 0;
+	wStream* s = NULL;
 	char port_str[10] = { 0 };
 	char recv_buf[256] = { 0 };
 	char* eol = NULL;
 	size_t resultsize = 0;
-	size_t reserveSize;
-	size_t portLen;
-	size_t hostLen;
-	const char connect[8] = "CONNECT";
-	const char httpheader[17] = " HTTP/1.1" CRLF "Host: ";
+	size_t reserveSize = 0;
+	size_t portLen = 0;
+	size_t hostLen = 0;
+	const char connect[] = "CONNECT ";
+	const char httpheader[] = " HTTP/1.1" CRLF "Host: ";
 
 	WINPR_ASSERT(bufferedBio);
 	WINPR_ASSERT(hostname);
@@ -430,16 +539,16 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 
 	hostLen = strlen(hostname);
 	portLen = strnlen(port_str, sizeof(port_str));
-	reserveSize = ARRAYSIZE(connect) + (hostLen + 1 + portLen) * 2 + ARRAYSIZE(httpheader);
+	reserveSize = strlen(connect) + (hostLen + 1 + portLen) * 2 + strlen(httpheader);
 	s = Stream_New(NULL, reserveSize);
 	if (!s)
 		goto fail;
 
-	Stream_Write(s, connect, ARRAYSIZE(connect));
+	Stream_Write(s, connect, strlen(connect));
 	Stream_Write(s, hostname, hostLen);
 	Stream_Write_UINT8(s, ':');
 	Stream_Write(s, port_str, portLen);
-	Stream_Write(s, httpheader, ARRAYSIZE(httpheader));
+	Stream_Write(s, httpheader, strlen(httpheader));
 	Stream_Write(s, hostname, hostLen);
 	Stream_Write_UINT8(s, ':');
 	Stream_Write(s, port_str, portLen);
@@ -457,19 +566,18 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 			else
 			{
 				const char basic[] = CRLF "Proxy-Authorization: Basic ";
-				char* base64;
+				char* base64 = NULL;
 
 				sprintf_s(creds, size, "%s:%s", proxyUsername, proxyPassword);
 				base64 = crypto_base64_encode((const BYTE*)creds, size - 1);
 
-				if (!base64 ||
-				    !Stream_EnsureRemainingCapacity(s, ARRAYSIZE(basic) + strlen(base64)))
+				if (!base64 || !Stream_EnsureRemainingCapacity(s, strlen(basic) + strlen(base64)))
 				{
 					free(base64);
 					free(creds);
 					goto fail;
 				}
-				Stream_Write(s, basic, ARRAYSIZE(basic));
+				Stream_Write(s, basic, strlen(basic));
 				Stream_Write(s, base64, strlen(base64));
 
 				free(base64);
@@ -482,6 +590,7 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 		goto fail;
 
 	Stream_Write(s, CRLF CRLF, 4);
+	ERR_clear_error();
 	status = BIO_write(bufferedBio, Stream_Buffer(s), Stream_GetPosition(s));
 
 	if ((status < 0) || ((size_t)status != Stream_GetPosition(s)))
@@ -500,6 +609,7 @@ static BOOL http_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 			goto fail;
 		}
 
+		ERR_clear_error();
 		status =
 		    BIO_read(bufferedBio, (BYTE*)recv_buf + resultsize, sizeof(recv_buf) - resultsize - 1);
 
@@ -553,10 +663,11 @@ fail:
 
 static int recv_socks_reply(BIO* bufferedBio, BYTE* buf, int len, char* reason, BYTE checkVer)
 {
-	int status;
+	int status = 0;
 
 	for (;;)
 	{
+		ERR_clear_error();
 		status = BIO_read(bufferedBio, buf, len);
 
 		if (status > 0)
@@ -602,8 +713,9 @@ static int recv_socks_reply(BIO* bufferedBio, BYTE* buf, int len, char* reason, 
 static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
                                 const char* proxyPassword, const char* hostname, UINT16 port)
 {
-	int status;
-	int nauthMethods = 1, writeLen = 3;
+	int status = 0;
+	int nauthMethods = 1;
+	int writeLen = 3;
 	BYTE buf[3 + 255 + 255]; /* biggest packet is user/pass auth */
 	size_t hostnlen = strnlen(hostname, 255);
 
@@ -621,6 +733,7 @@ static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 	if (nauthMethods > 1)
 		buf[3] = AUTH_M_USR_PASS;
 
+	ERR_clear_error();
 	status = BIO_write(bufferedBio, buf, writeLen);
 
 	if (status != writeLen)
@@ -647,7 +760,7 @@ static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 			{
 				int usernameLen = strnlen(proxyUsername, 255);
 				int userpassLen = strnlen(proxyPassword, 255);
-				BYTE* ptr;
+				BYTE* ptr = NULL;
 
 				if (nauthMethods < 2)
 				{
@@ -664,6 +777,7 @@ static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 				*ptr = userpassLen;
 				ptr++;
 				memcpy(ptr, proxyPassword, userpassLen);
+				ERR_clear_error();
 				status = BIO_write(bufferedBio, buf, 3 + usernameLen + userpassLen);
 
 				if (status != 3 + usernameLen + userpassLen)
@@ -701,6 +815,7 @@ static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 	/* follows DST.PORT in netw. format */
 	buf[hostnlen + 5] = (port >> 8) & 0xff;
 	buf[hostnlen + 6] = port & 0xff;
+	ERR_clear_error();
 	status = BIO_write(bufferedBio, buf, hostnlen + 7U);
 
 	if ((status < 0) || ((size_t)status != (hostnlen + 7U)))
@@ -716,14 +831,14 @@ static BOOL socks_proxy_connect(BIO* bufferedBio, const char* proxyUsername,
 
 	if (buf[1] == 0)
 	{
-		WLog_INFO(TAG, "Successfully connected to %s:%d", hostname, port);
+		WLog_INFO(TAG, "Successfully connected to %s:%" PRIu16, hostname, port);
 		return TRUE;
 	}
 
 	if (buf[1] > 0 && buf[1] < 9)
 		WLog_INFO(TAG, "SOCKS Proxy replied: %s", rplstat[buf[1]]);
 	else
-		WLog_INFO(TAG, "SOCKS Proxy replied: %d status not listed in rfc1928", buf[1]);
+		WLog_INFO(TAG, "SOCKS Proxy replied: %" PRIu8 " status not listed in rfc1928", buf[1]);
 
 	return FALSE;
 }

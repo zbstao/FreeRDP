@@ -51,7 +51,7 @@ static const KEYBOARD_LAYOUT_MAPPING KEYBOARD_MAPPING_TABLE[] = {
 	{ "com.apple.keylayout.AfghanDari", KBD_PERSIAN },
 	{ "com.apple.keylayout.AfghanPashto", PASHTO },
 	{ "com.apple.keylayout.AfghanUzbek", UZBEK_LATIN },
-	{ "com.apple.keylayout.Arabic", ARABIC_EGYPT },
+	{ "com.apple.keylayout.Arabic", ARABIC_SAUDI_ARABIA },
 	{ "com.apple.keylayout.Arabic-QWERTY", ARABIC_EGYPT },
 	{ "com.apple.keylayout.ArabicPC", ARABIC_EGYPT },
 	{ "com.apple.keylayout.Armenian-HMQWERTY", ARMENIAN },
@@ -141,7 +141,7 @@ static const KEYBOARD_LAYOUT_MAPPING KEYBOARD_MAPPING_TABLE[] = {
 	{ "com.apple.keylayout.Persian", KBD_PERSIAN },
 	{ "com.apple.keylayout.Persian-ISIRI2901", KBD_PERSIAN },
 	{ "com.apple.keylayout.Polish", KBD_POLISH_214 },
-	{ "com.apple.keylayout.PolishPro", KBD_UNITED_STATES_INTERNATIONAL },
+	{ "com.apple.keylayout.PolishPro", KBD_POLISH_PROGRAMMERS },
 	{ "com.apple.keylayout.Portuguese", PORTUGUESE_STANDARD },
 	{ "com.apple.keylayout.Romanian", KBD_ROMANIAN },
 	{ "com.apple.keylayout.Romanian-Standard", KBD_ROMANIAN_STANDARD },
@@ -187,7 +187,6 @@ static const KEYBOARD_LAYOUT_MAPPING KEYBOARD_MAPPING_TABLE[] = {
 
 int freerdp_detect_keyboard_layout_from_cf(DWORD* keyboardLayoutId)
 {
-	int i;
 	CFIndex length;
 	char* inputSourceId = NULL;
 	CFStringRef inputSourceIdRef;
@@ -223,7 +222,7 @@ int freerdp_detect_keyboard_layout_from_cf(DWORD* keyboardLayoutId)
 	}
 
 	/* Search for the id in the mapping table */
-	for (i = 0; i < ARRAYSIZE(KEYBOARD_MAPPING_TABLE); ++i)
+	for (size_t i = 0; i < ARRAYSIZE(KEYBOARD_MAPPING_TABLE); ++i)
 	{
 		if (strcmp(inputSourceId, KEYBOARD_MAPPING_TABLE[i].inputSourceId) == 0)
 		{

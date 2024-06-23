@@ -25,6 +25,14 @@
 #include <freerdp/dvc.h>
 #include <freerdp/types.h>
 
+#define ECHO_CHANNEL_NAME "echo"
 #define ECHO_DVC_CHANNEL_NAME "ECHO"
 
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+#ifdef __cplusplus
+}
+#endif
 #endif /* FREERDP_CHANNEL_ECHO_H */

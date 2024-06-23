@@ -35,31 +35,36 @@
 typedef void* (*pthread_start_routine)(void*);
 typedef struct winpr_APC_item WINPR_APC_ITEM;
 
+typedef struct
+{
+	WINPR_ALIGN64 pthread_mutex_t mux;
+	WINPR_ALIGN64 pthread_cond_t cond;
+	WINPR_ALIGN64 BOOL val;
+} mux_condition_bundle;
+
 struct winpr_thread
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
-	BOOL started;
-	WINPR_EVENT_IMPL event;
-	BOOL mainProcess;
-	BOOL detached;
-	BOOL joined;
-	BOOL exited;
-	DWORD dwExitCode;
-	pthread_t thread;
-	SIZE_T dwStackSize;
-	LPVOID lpParameter;
-	pthread_mutex_t mutex;
-	pthread_mutex_t threadIsReadyMutex;
-	pthread_cond_t threadIsReady;
-	pthread_mutex_t threadReadyMutex;
-	pthread_cond_t threadReady;
-	LPTHREAD_START_ROUTINE lpStartAddress;
-	LPSECURITY_ATTRIBUTES lpThreadAttributes;
-	APC_QUEUE apc;
+	WINPR_ALIGN64 BOOL started;
+	WINPR_ALIGN64 WINPR_EVENT_IMPL event;
+	WINPR_ALIGN64 BOOL mainProcess;
+	WINPR_ALIGN64 BOOL detached;
+	WINPR_ALIGN64 BOOL joined;
+	WINPR_ALIGN64 BOOL exited;
+	WINPR_ALIGN64 DWORD dwExitCode;
+	WINPR_ALIGN64 pthread_t thread;
+	WINPR_ALIGN64 SIZE_T dwStackSize;
+	WINPR_ALIGN64 LPVOID lpParameter;
+	WINPR_ALIGN64 pthread_mutex_t mutex;
+	mux_condition_bundle isRunning;
+	mux_condition_bundle isCreated;
+	WINPR_ALIGN64 LPTHREAD_START_ROUTINE lpStartAddress;
+	WINPR_ALIGN64 LPSECURITY_ATTRIBUTES lpThreadAttributes;
+	WINPR_ALIGN64 APC_QUEUE apc;
 #if defined(WITH_DEBUG_THREADS)
-	void* create_stack;
-	void* exit_stack;
+	WINPR_ALIGN64 void* create_stack;
+	WINPR_ALIGN64 void* exit_stack;
 #endif
 };
 
@@ -67,11 +72,12 @@ WINPR_THREAD* winpr_GetCurrentThread(VOID);
 
 typedef struct
 {
-	WINPR_HANDLE_DEF();
+	WINPR_HANDLE common;
 
 	pid_t pid;
 	int status;
 	DWORD dwExitCode;
+	int fd;
 } WINPR_PROCESS;
 
 #endif

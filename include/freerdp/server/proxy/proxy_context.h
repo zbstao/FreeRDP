@@ -22,10 +22,14 @@
 #ifndef FREERDP_SERVER_PROXY_PFCONTEXT_H
 #define FREERDP_SERVER_PROXY_PFCONTEXT_H
 
+#include <freerdp/api.h>
+#include <freerdp/types.h>
+
 #include <freerdp/freerdp.h>
 #include <freerdp/channels/wtsvc.h>
 
 #include <freerdp/server/proxy/proxy_config.h>
+#include <freerdp/server/proxy/proxy_types.h>
 
 #define PROXY_SESSION_ID_LENGTH 32
 
@@ -36,6 +40,7 @@ extern "C"
 
 	typedef struct proxy_data proxyData;
 	typedef struct proxy_module proxyModule;
+	typedef struct p_server_static_channel_context pServerStaticChannelContext;
 
 	typedef struct s_InterceptContextMapEntry
 	{
@@ -45,27 +50,26 @@ extern "C"
 	/* All proxy interception channels derive from this base struct
 	 * and set their cleanup function accordingly. */
 	FREERDP_API void intercept_context_entry_free(void* obj);
-
-	/** @brief how is handled a channel */
-	typedef enum
-	{
-		PF_UTILS_CHANNEL_NOT_HANDLED,
-		PF_UTILS_CHANNEL_BLOCK,
-		PF_UTILS_CHANNEL_PASSTHROUGH,
-		PF_UTILS_CHANNEL_INTERCEPT,
-	} pf_utils_channel_mode;
+	typedef PfChannelResult (*proxyChannelDataFn)(proxyData* pdata,
+	                                              const pServerStaticChannelContext* channel,
+	                                              const BYTE* xdata, size_t xsize, UINT32 flags,
+	                                              size_t totalSizepServer);
+	typedef void (*proxyChannelContextDtor)(void* context);
 
 	/** @brief per channel configuration */
-	struct p_server_channel_context
+	struct p_server_static_channel_context
 	{
 		char* channel_name;
-		UINT32 channel_id;
-		BOOL isDynamic;
+		UINT32 front_channel_id;
+		UINT32 back_channel_id;
 		pf_utils_channel_mode channelMode;
+		proxyChannelDataFn onFrontData;
+		proxyChannelDataFn onBackData;
+		proxyChannelContextDtor contextDtor;
+		void* context;
 	};
-	typedef struct p_server_channel_context pServerChannelContext;
 
-	void ChannelContext_free(pServerChannelContext* ctx);
+	void StaticChannelContext_free(pServerStaticChannelContext* ctx);
 
 	/**
 	 * Wraps rdpContext and holds the state for the proxy's server.
@@ -80,11 +84,14 @@ extern "C"
 		HANDLE dynvcReady;
 
 		wHashTable* interceptContextMap;
-		wHashTable* channelsById;
+		wHashTable* channelsByFrontId;
+		wHashTable* channelsByBackId;
 	};
 	typedef struct p_server_context pServerContext;
 
-	pServerChannelContext* ChannelContext_new(pServerContext* ps, const char* name, UINT32 id);
+	WINPR_ATTR_MALLOC(StaticChannelContext_free, 1)
+	pServerStaticChannelContext* StaticChannelContext_new(pServerContext* ps, const char* name,
+	                                                      UINT32 id);
 
 	/**
 	 * Wraps rdpContext and holds the state for the proxy's client.
@@ -158,12 +165,16 @@ extern "C"
 
 	FREERDP_API BOOL pf_context_copy_settings(rdpSettings* dst, const rdpSettings* src);
 	FREERDP_API BOOL pf_context_init_server_context(freerdp_peer* client);
-	FREERDP_API pClientContext* pf_context_create_client_context(rdpSettings* clientSettings);
 
+	WINPR_ATTR_MALLOC(freerdp_client_context_free, 1)
+	FREERDP_API pClientContext* pf_context_create_client_context(const rdpSettings* clientSettings);
+
+	FREERDP_API void proxy_data_free(proxyData* pdata);
+
+	WINPR_ATTR_MALLOC(proxy_data_free, 1)
 	FREERDP_API proxyData* proxy_data_new(void);
 	FREERDP_API void proxy_data_set_client_context(proxyData* pdata, pClientContext* context);
 	FREERDP_API void proxy_data_set_server_context(proxyData* pdata, pServerContext* context);
-	FREERDP_API void proxy_data_free(proxyData* pdata);
 
 	FREERDP_API BOOL proxy_data_shall_disconnect(proxyData* pdata);
 	FREERDP_API void proxy_data_abort_connect(proxyData* pdata);

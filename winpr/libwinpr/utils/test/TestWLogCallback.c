@@ -58,35 +58,35 @@ static BOOL CallbackAppenderMessage(const wLogMessage* msg)
 
 static BOOL CallbackAppenderData(const wLogMessage* msg)
 {
-	fprintf(stdout, "%s\n", __FUNCTION__);
+	fprintf(stdout, "%s\n", __func__);
 	return TRUE;
 }
 
 static BOOL CallbackAppenderImage(const wLogMessage* msg)
 {
-	fprintf(stdout, "%s\n", __FUNCTION__);
+	fprintf(stdout, "%s\n", __func__);
 	return TRUE;
 }
 
 static BOOL CallbackAppenderPackage(const wLogMessage* msg)
 {
-	fprintf(stdout, "%s\n", __FUNCTION__);
+	fprintf(stdout, "%s\n", __func__);
 	return TRUE;
 }
 
 int TestWLogCallback(int argc, char* argv[])
 {
-	wLog* root;
-	wLog* logA;
-	wLog* logB;
-	wLogLayout* layout;
-	wLogAppender* appender;
+	wLog* root = NULL;
+	wLog* logA = NULL;
+	wLog* logB = NULL;
+	wLogLayout* layout = NULL;
+	wLogAppender* appender = NULL;
 	wLogCallbacks callbacks;
 
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
 
-	function = __FUNCTION__;
+	function = __func__;
 
 	root = WLog_GetRoot();
 

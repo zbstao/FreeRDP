@@ -29,6 +29,8 @@
 
 #include "pf_client.h"
 #include "pf_utils.h"
+#include "proxy_modules.h"
+
 #include <freerdp/server/proxy/proxy_context.h>
 
 #include "channels/pf_channel_rdpdr.h"
@@ -41,47 +43,67 @@ static UINT32 ChannelId_Hash(const void* key)
 	return *v;
 }
 
-static BOOL ChannelId_Compare(const UINT32* v1, const UINT32* v2)
+static BOOL ChannelId_Compare(const void* pv1, const void* pv2)
 {
+	const UINT32* v1 = pv1;
+	const UINT32* v2 = pv2;
+	WINPR_ASSERT(v1);
+	WINPR_ASSERT(v2);
 	return (*v1 == *v2);
 }
 
-pServerChannelContext* ChannelContext_new(pServerContext* ps, const char* name, UINT32 id)
+pServerStaticChannelContext* StaticChannelContext_new(pServerContext* ps, const char* name,
+                                                      UINT32 id)
 {
-	pServerChannelContext* ret = calloc(1, sizeof(*ret));
+	pServerStaticChannelContext* ret = calloc(1, sizeof(*ret));
 	if (!ret)
 	{
 		PROXY_LOG_ERR(TAG, ps, "error allocating channel context for '%s'", name);
 		return NULL;
 	}
 
-	ret->channel_id = id;
+	ret->front_channel_id = id;
 	ret->channel_name = _strdup(name);
 	if (!ret->channel_name)
 	{
-		PROXY_LOG_ERR(TAG, ps, "error allocating name in channel context for '%s'", ret);
+		PROXY_LOG_ERR(TAG, ps, "error allocating name in channel context for '%s'", name);
 		free(ret);
 		return NULL;
 	}
 
-	ret->channelMode = pf_utils_get_channel_mode(ps->pdata->config, name);
+	proxyChannelToInterceptData channel = { .name = name, .channelId = id, .intercept = FALSE };
+
+	if (pf_modules_run_filter(ps->pdata->module, FILTER_TYPE_STATIC_INTERCEPT_LIST, ps->pdata,
+	                          &channel) &&
+	    channel.intercept)
+		ret->channelMode = PF_UTILS_CHANNEL_INTERCEPT;
+	else
+		ret->channelMode = pf_utils_get_channel_mode(ps->pdata->config, name);
 	return ret;
 }
 
-void ChannelContext_free(pServerChannelContext* ctx)
+void StaticChannelContext_free(pServerStaticChannelContext* ctx)
 {
 	if (!ctx)
 		return;
 
+	IFCALL(ctx->contextDtor, ctx->context);
+
 	free(ctx->channel_name);
 	free(ctx);
+}
+
+static void HashStaticChannelContext_free(void* ptr)
+{
+	pServerStaticChannelContext* ctx = (pServerStaticChannelContext*)ptr;
+	StaticChannelContext_free(ctx);
 }
 
 /* Proxy context initialization callback */
 static void client_to_proxy_context_free(freerdp_peer* client, rdpContext* ctx);
 static BOOL client_to_proxy_context_new(freerdp_peer* client, rdpContext* ctx)
 {
-	wObject* obj;
+	wObject* obj = NULL;
 	pServerContext* context = (pServerContext*)ctx;
 
 	WINPR_ASSERT(client);
@@ -107,17 +129,27 @@ static BOOL client_to_proxy_context_new(freerdp_peer* client, rdpContext* ctx)
 	obj->fnObjectFree = intercept_context_entry_free;
 
 	/* channels by ids */
-	context->channelsById = HashTable_New(FALSE);
-	if (!context->channelsById)
+	context->channelsByFrontId = HashTable_New(FALSE);
+	if (!context->channelsByFrontId)
 		goto error;
-	if (!HashTable_SetHashFunction(context->channelsById, ChannelId_Hash))
+	if (!HashTable_SetHashFunction(context->channelsByFrontId, ChannelId_Hash))
 		goto error;
 
-	obj = HashTable_KeyObject(context->channelsById);
-	obj->fnObjectEquals = (OBJECT_EQUALS_FN)ChannelId_Compare;
+	obj = HashTable_KeyObject(context->channelsByFrontId);
+	obj->fnObjectEquals = ChannelId_Compare;
 
-	obj = HashTable_ValueObject(context->channelsById);
-	obj->fnObjectFree = (OBJECT_FREE_FN)ChannelContext_free;
+	obj = HashTable_ValueObject(context->channelsByFrontId);
+	obj->fnObjectFree = HashStaticChannelContext_free;
+
+	context->channelsByBackId = HashTable_New(FALSE);
+	if (!context->channelsByBackId)
+		goto error;
+	if (!HashTable_SetHashFunction(context->channelsByBackId, ChannelId_Hash))
+		goto error;
+
+	obj = HashTable_KeyObject(context->channelsByBackId);
+	obj->fnObjectEquals = ChannelId_Compare;
+
 	return TRUE;
 
 error:
@@ -143,7 +175,8 @@ void client_to_proxy_context_free(freerdp_peer* client, rdpContext* ctx)
 	}
 
 	HashTable_Free(context->interceptContextMap);
-	HashTable_Free(context->channelsById);
+	HashTable_Free(context->channelsByFrontId);
+	HashTable_Free(context->channelsByBackId);
 
 	if (context->vcm && (context->vcm != INVALID_HANDLE_VALUE))
 		WTSCloseServer((HANDLE)context->vcm);
@@ -162,16 +195,15 @@ BOOL pf_context_init_server_context(freerdp_peer* client)
 }
 
 static BOOL pf_context_revert_str_settings(rdpSettings* dst, const rdpSettings* before, size_t nr,
-                                           const size_t* ids)
+                                           const FreeRDP_Settings_Keys_String* ids)
 {
-	size_t x;
 	WINPR_ASSERT(dst);
 	WINPR_ASSERT(before);
 	WINPR_ASSERT(ids || (nr == 0));
 
-	for (x = 0; x < nr; x++)
+	for (size_t x = 0; x < nr; x++)
 	{
-		size_t id = ids[x];
+		FreeRDP_Settings_Keys_String id = ids[x];
 		const char* what = freerdp_settings_get_string(before, id);
 		if (!freerdp_settings_set_string(dst, id, what))
 			return FALSE;
@@ -193,11 +225,9 @@ void intercept_context_entry_free(void* obj)
 BOOL pf_context_copy_settings(rdpSettings* dst, const rdpSettings* src)
 {
 	BOOL rc = FALSE;
-	rdpSettings* before_copy;
-	const size_t to_revert[] = { FreeRDP_ConfigPath,      FreeRDP_PrivateKeyContent,
-		                         FreeRDP_RdpKeyContent,   FreeRDP_RdpKeyFile,
-		                         FreeRDP_PrivateKeyFile,  FreeRDP_CertificateFile,
-		                         FreeRDP_CertificateName, FreeRDP_CertificateContent };
+	rdpSettings* before_copy = NULL;
+	const FreeRDP_Settings_Keys_String to_revert[] = { FreeRDP_ConfigPath,
+		                                               FreeRDP_CertificateName };
 
 	if (!dst || !src)
 		return FALSE;
@@ -207,30 +237,28 @@ BOOL pf_context_copy_settings(rdpSettings* dst, const rdpSettings* src)
 		return FALSE;
 
 	if (!freerdp_settings_copy(dst, src))
-	{
-		freerdp_settings_free(before_copy);
-		return FALSE;
-	}
+		goto out_fail;
 
 	/* keep original ServerMode value */
-	dst->ServerMode = before_copy->ServerMode;
+	if (!freerdp_settings_copy_item(dst, before_copy, FreeRDP_ServerMode))
+		goto out_fail;
 
 	/* revert some values that must not be changed */
 	if (!pf_context_revert_str_settings(dst, before_copy, ARRAYSIZE(to_revert), to_revert))
-		return FALSE;
+		goto out_fail;
 
-	if (!dst->ServerMode)
+	if (!freerdp_settings_get_bool(dst, FreeRDP_ServerMode))
 	{
 		/* adjust instance pointer */
-		dst->instance = before_copy->instance;
+		if (!freerdp_settings_copy_item(dst, before_copy, FreeRDP_instance))
+			goto out_fail;
 
 		/*
 		 * RdpServerRsaKey must be set to NULL if `dst` is client's context
 		 * it must be freed before setting it to NULL to avoid a memory leak!
 		 */
 
-		if (!freerdp_settings_set_pointer_len(dst, FreeRDP_RdpServerRsaKey, NULL,
-		                                      sizeof(rdpRsaKey)))
+		if (!freerdp_settings_set_pointer_len(dst, FreeRDP_RdpServerRsaKey, NULL, 1))
 			goto out_fail;
 	}
 
@@ -242,11 +270,11 @@ out_fail:
 	return rc;
 }
 
-pClientContext* pf_context_create_client_context(rdpSettings* clientSettings)
+pClientContext* pf_context_create_client_context(const rdpSettings* clientSettings)
 {
 	RDP_CLIENT_ENTRY_POINTS clientEntryPoints;
-	pClientContext* pc;
-	rdpContext* context;
+	pClientContext* pc = NULL;
+	rdpContext* context = NULL;
 
 	WINPR_ASSERT(clientSettings);
 
@@ -270,8 +298,8 @@ error:
 proxyData* proxy_data_new(void)
 {
 	BYTE temp[16];
-	char* hex;
-	proxyData* pdata;
+	char* hex = NULL;
+	proxyData* pdata = NULL;
 
 	pdata = calloc(1, sizeof(proxyData));
 	if (!pdata)
@@ -283,7 +311,7 @@ proxyData* proxy_data_new(void)
 	if (!(pdata->gfx_server_ready = CreateEvent(NULL, TRUE, FALSE, NULL)))
 		goto error;
 
-	winpr_RAND((BYTE*)&temp, 16);
+	winpr_RAND(&temp, 16);
 	hex = winpr_BinToHexString(temp, 16, FALSE);
 	if (!hex)
 		goto error;
@@ -301,7 +329,10 @@ proxyData* proxy_data_new(void)
 
 	return pdata;
 error:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
 	proxy_data_free(pdata);
+	WINPR_PRAGMA_DIAG_POP
 	return NULL;
 }
 
@@ -352,7 +383,7 @@ void proxy_data_abort_connect(proxyData* pdata)
 	WINPR_ASSERT(pdata->abort_event);
 	SetEvent(pdata->abort_event);
 	if (pdata->pc)
-		freerdp_abort_connect(pdata->pc->context.instance);
+		freerdp_abort_connect_context(&pdata->pc->context);
 }
 
 BOOL proxy_data_shall_disconnect(proxyData* pdata)

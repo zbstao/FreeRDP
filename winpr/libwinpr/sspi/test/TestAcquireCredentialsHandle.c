@@ -11,18 +11,18 @@ static const char* test_Password = "Password";
 int TestAcquireCredentialsHandle(int argc, char* argv[])
 {
 	int rc = -1;
-	SECURITY_STATUS status;
+	SECURITY_STATUS status = 0;
 	CredHandle credentials = { 0 };
 	TimeStamp expiration;
 	SEC_WINNT_AUTH_IDENTITY identity;
-	SecurityFunctionTable* table;
+	SecurityFunctionTable* table = NULL;
 	SecPkgCredentials_Names credential_names;
 
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
 
 	sspi_GlobalInit();
-	table = InitSecurityInterface();
+	table = InitSecurityInterfaceEx(0);
 	identity.User = (UINT16*)_strdup(test_User);
 	identity.Domain = (UINT16*)_strdup(test_Domain);
 	identity.Password = (UINT16*)_strdup(test_Password);

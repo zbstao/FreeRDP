@@ -35,7 +35,8 @@ typedef struct
 	SEC_GET_KEY_FN pGetKeyFn;
 	void* pvGetKeyArgument;
 	SEC_WINNT_AUTH_IDENTITY identity;
-	SEC_WINPR_KERBEROS_SETTINGS* kerbSettings;
+	SEC_WINPR_NTLM_SETTINGS ntlmSettings;
+	SEC_WINPR_KERBEROS_SETTINGS kerbSettings;
 } SSPI_CREDENTIALS;
 
 SSPI_CREDENTIALS* sspi_CredentialsNew(void);
@@ -80,7 +81,8 @@ enum SecurityFunctionTableIndex
 	QuerySecurityContextTokenIndex = 25,
 	EncryptMessageIndex = 26,
 	DecryptMessageIndex = 27,
-	SetContextAttributesIndex = 28
+	SetContextAttributesIndex = 28,
+	SetCredentialsAttributesIndex = 29
 };
 
 BOOL IsSecurityStatusError(SECURITY_STATUS status);

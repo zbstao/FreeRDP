@@ -32,7 +32,7 @@
 
 #include <winpr/crt.h>
 
-#ifdef HAVE_UNISTD_H
+#ifdef WINPR_HAVE_UNISTD_H
 #include <unistd.h>
 #endif
 
@@ -45,16 +45,19 @@
 
 BOOL GetUserProfileDirectoryA(HANDLE hToken, LPSTR lpProfileDir, LPDWORD lpcchSize)
 {
-	char* buf;
-	int buflen;
-	int status;
-	DWORD cchDirSize;
+	char* buf = NULL;
+	int buflen = 0;
+	int status = 0;
+	DWORD cchDirSize = 0;
 	struct passwd pwd;
 	struct passwd* pw = NULL;
-	WINPR_ACCESS_TOKEN* token;
+	WINPR_ACCESS_TOKEN* token = NULL;
 	token = (WINPR_ACCESS_TOKEN*)hToken;
 
-	if (!token || (token->Type != HANDLE_TYPE_ACCESS_TOKEN) || !lpcchSize)
+	if (!AccessTokenIsValid(hToken))
+		return FALSE;
+
+	if (!lpcchSize)
 	{
 		SetLastError(ERROR_INVALID_PARAMETER);
 		return FALSE;
@@ -98,9 +101,9 @@ BOOL GetUserProfileDirectoryA(HANDLE hToken, LPSTR lpProfileDir, LPDWORD lpcchSi
 
 BOOL GetUserProfileDirectoryW(HANDLE hToken, LPWSTR lpProfileDir, LPDWORD lpcchSize)
 {
-	BOOL bStatus;
-	DWORD cchSizeA;
-	LPSTR lpProfileDirA;
+	BOOL bStatus = 0;
+	DWORD cchSizeA = 0;
+	LPSTR lpProfileDirA = NULL;
 
 	if (!lpcchSize)
 	{
@@ -126,7 +129,8 @@ BOOL GetUserProfileDirectoryW(HANDLE hToken, LPWSTR lpProfileDir, LPDWORD lpcchS
 
 	if (bStatus)
 	{
-		MultiByteToWideChar(CP_ACP, 0, lpProfileDirA, cchSizeA, lpProfileDir, *lpcchSize);
+		SSIZE_T size = ConvertUtf8NToWChar(lpProfileDirA, cchSizeA, lpProfileDir, *lpcchSize);
+		bStatus = size >= 0;
 	}
 
 	if (lpProfileDirA)

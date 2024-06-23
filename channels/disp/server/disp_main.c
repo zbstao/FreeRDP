@@ -46,7 +46,7 @@
 
 static wStream* disp_server_single_packet_new(UINT32 type, UINT32 length)
 {
-	UINT error;
+	UINT error = 0;
 	DISPLAY_CONTROL_HEADER header;
 	wStream* s = Stream_New(NULL, DISPLAY_CONTROL_HEADER_LENGTH + length);
 
@@ -127,17 +127,13 @@ static BOOL disp_server_is_monitor_layout_valid(const DISPLAY_CONTROL_MONITOR_LA
 static UINT disp_recv_display_control_monitor_layout_pdu(wStream* s, DispServerContext* context)
 {
 	UINT32 error = CHANNEL_RC_OK;
-	UINT32 index;
 	DISPLAY_CONTROL_MONITOR_LAYOUT_PDU pdu = { 0 };
 
 	WINPR_ASSERT(s);
 	WINPR_ASSERT(context);
 
-	if (Stream_GetRemainingLength(s) < 8)
-	{
-		WLog_ERR(TAG, "not enough data!");
+	if (!Stream_CheckAndLogRequiredLength(TAG, s, 8))
 		return ERROR_INVALID_DATA;
-	}
 
 	Stream_Read_UINT32(s, pdu.MonitorLayoutSize); /* MonitorLayoutSize (4 bytes) */
 
@@ -157,11 +153,9 @@ static UINT disp_recv_display_control_monitor_layout_pdu(wStream* s, DispServerC
 		return ERROR_INVALID_DATA;
 	}
 
-	if (Stream_GetRemainingLength(s) / DISPLAY_CONTROL_MONITOR_LAYOUT_SIZE < pdu.NumMonitors)
-	{
-		WLog_ERR(TAG, "not enough data!");
+	if (!Stream_CheckAndLogRequiredLengthOfSize(TAG, s, pdu.NumMonitors,
+	                                            DISPLAY_CONTROL_MONITOR_LAYOUT_SIZE))
 		return ERROR_INVALID_DATA;
-	}
 
 	pdu.Monitors = (DISPLAY_CONTROL_MONITOR_LAYOUT*)calloc(pdu.NumMonitors,
 	                                                       sizeof(DISPLAY_CONTROL_MONITOR_LAYOUT));
@@ -175,7 +169,7 @@ static UINT disp_recv_display_control_monitor_layout_pdu(wStream* s, DispServerC
 	WLog_DBG(TAG, "disp_recv_display_control_monitor_layout_pdu: NumMonitors=%" PRIu32 "",
 	         pdu.NumMonitors);
 
-	for (index = 0; index < pdu.NumMonitors; index++)
+	for (UINT32 index = 0; index < pdu.NumMonitors; index++)
 	{
 		DISPLAY_CONTROL_MONITOR_LAYOUT* monitor = &(pdu.Monitors[index]);
 
@@ -192,8 +186,8 @@ static UINT disp_recv_display_control_monitor_layout_pdu(wStream* s, DispServerC
 
 		disp_server_sanitize_monitor_layout(monitor);
 		WLog_DBG(TAG,
-		         "\t%d : Flags: 0x%08" PRIX32 " Left/Top: (%" PRId32 ",%" PRId32 ") W/H=%" PRIu32
-		         "x%" PRIu32 ")",
+		         "\t%" PRIu32 " : Flags: 0x%08" PRIX32 " Left/Top: (%" PRId32 ",%" PRId32
+		         ") W/H=%" PRIu32 "x%" PRIu32 ")",
 		         index, monitor->Flags, monitor->Left, monitor->Top, monitor->Width,
 		         monitor->Height);
 		WLog_DBG(TAG,
@@ -219,7 +213,8 @@ out:
 static UINT disp_server_receive_pdu(DispServerContext* context, wStream* s)
 {
 	UINT error = CHANNEL_RC_OK;
-	size_t beg, end;
+	size_t beg = 0;
+	size_t end = 0;
 	DISPLAY_CONTROL_HEADER header = { 0 };
 
 	WINPR_ASSERT(s);
@@ -254,7 +249,7 @@ static UINT disp_server_receive_pdu(DispServerContext* context, wStream* s)
 
 	if (end != (beg + header.length))
 	{
-		WLog_ERR(TAG, "Unexpected DISP pdu end: Actual: %d, Expected: %" PRIu32 "", end,
+		WLog_ERR(TAG, "Unexpected DISP pdu end: Actual: %" PRIuz ", Expected: %" PRIuz "", end,
 		         (beg + header.length));
 		Stream_SetPosition(s, (beg + header.length));
 	}
@@ -264,11 +259,11 @@ static UINT disp_server_receive_pdu(DispServerContext* context, wStream* s)
 
 static UINT disp_server_handle_messages(DispServerContext* context)
 {
-	DWORD BytesReturned;
-	void* buffer;
+	DWORD BytesReturned = 0;
+	void* buffer = NULL;
 	UINT ret = CHANNEL_RC_OK;
-	DispServerPrivate* priv;
-	wStream* s;
+	DispServerPrivate* priv = NULL;
+	wStream* s = NULL;
 
 	WINPR_ASSERT(context);
 
@@ -344,8 +339,8 @@ static UINT disp_server_handle_messages(DispServerContext* context)
 static DWORD WINAPI disp_server_thread_func(LPVOID arg)
 {
 	DispServerContext* context = (DispServerContext*)arg;
-	DispServerPrivate* priv;
-	DWORD status;
+	DispServerPrivate* priv = NULL;
+	DWORD status = 0;
 	DWORD nCount = 0;
 	HANDLE events[8] = { 0 };
 	UINT error = CHANNEL_RC_OK;
@@ -393,10 +388,12 @@ static DWORD WINAPI disp_server_thread_func(LPVOID arg)
 static UINT disp_server_open(DispServerContext* context)
 {
 	UINT rc = ERROR_INTERNAL_ERROR;
-	DispServerPrivate* priv;
+	DispServerPrivate* priv = NULL;
 	DWORD BytesReturned = 0;
 	PULONG pSessionId = NULL;
 	void* buffer = NULL;
+	UINT32 channelId = 0;
+	BOOL status = TRUE;
 
 	WINPR_ASSERT(context);
 
@@ -422,6 +419,16 @@ static UINT disp_server_open(DispServerContext* context)
 	{
 		WLog_ERR(TAG, "WTSVirtualChannelOpenEx failed!");
 		rc = GetLastError();
+		goto out_close;
+	}
+
+	channelId = WTSChannelGetIdByHandle(priv->disp_channel);
+
+	IFCALLRET(context->ChannelIdAssigned, status, context, channelId);
+	if (!status)
+	{
+		WLog_ERR(TAG, "context->ChannelIdAssigned failed!");
+		rc = ERROR_INTERNAL_ERROR;
 		goto out_close;
 	}
 
@@ -451,6 +458,7 @@ static UINT disp_server_open(DispServerContext* context)
 		{
 			WLog_ERR(TAG, "CreateEvent failed!");
 			rc = ERROR_INTERNAL_ERROR;
+			goto out_close;
 		}
 
 		if (!(priv->thread =
@@ -460,6 +468,7 @@ static UINT disp_server_open(DispServerContext* context)
 			CloseHandle(priv->stopEvent);
 			priv->stopEvent = NULL;
 			rc = ERROR_INTERNAL_ERROR;
+			goto out_close;
 		}
 	}
 
@@ -473,8 +482,8 @@ out_close:
 
 static UINT disp_server_packet_send(DispServerContext* context, wStream* s)
 {
-	UINT ret;
-	ULONG written;
+	UINT ret = 0;
+	ULONG written = 0;
 
 	WINPR_ASSERT(context);
 	WINPR_ASSERT(s);
@@ -506,7 +515,7 @@ out:
  */
 static UINT disp_server_send_caps_pdu(DispServerContext* context)
 {
-	wStream* s;
+	wStream* s = NULL;
 
 	WINPR_ASSERT(context);
 
@@ -532,7 +541,7 @@ static UINT disp_server_send_caps_pdu(DispServerContext* context)
 static UINT disp_server_close(DispServerContext* context)
 {
 	UINT error = CHANNEL_RC_OK;
-	DispServerPrivate* priv;
+	DispServerPrivate* priv = NULL;
 
 	WINPR_ASSERT(context);
 
@@ -567,8 +576,8 @@ static UINT disp_server_close(DispServerContext* context)
 
 DispServerContext* disp_server_context_new(HANDLE vcm)
 {
-	DispServerContext* context;
-	DispServerPrivate* priv;
+	DispServerContext* context = NULL;
+	DispServerPrivate* priv = NULL;
 	context = (DispServerContext*)calloc(1, sizeof(DispServerContext));
 
 	if (!context)
@@ -600,7 +609,10 @@ DispServerContext* disp_server_context_new(HANDLE vcm)
 	priv->isReady = FALSE;
 	return context;
 fail:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
 	disp_server_context_free(context);
+	WINPR_PRAGMA_DIAG_POP
 	return NULL;
 }
 

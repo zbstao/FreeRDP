@@ -23,4 +23,7 @@ set(SRCS
     msusb.h
     msusb.c)
 
-add_library(urbdrc-common OBJECT ${SRCS})
+add_library(urbdrc-common STATIC ${SRCS})
+
+channel_install(urbdrc-common  ${FREERDP_ADDIN_PATH} "FreeRDPTargets")
+

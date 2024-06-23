@@ -13,8 +13,8 @@ static DWORD WINAPI test_thread(LPVOID arg)
 
 int TestSynchThread(int argc, char* argv[])
 {
-	DWORD rc;
-	HANDLE thread;
+	DWORD rc = 0;
+	HANDLE thread = NULL;
 
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
@@ -52,6 +52,17 @@ int TestSynchThread(int argc, char* argv[])
 	{
 		printf("Timed WaitForSingleObject on dead thread failed with %" PRIu32 "\n", rc);
 		return -5;
+	}
+
+	/* check that WaitForSingleObject works multiple times on a terminated thread */
+	for (int i = 0; i < 4; i++)
+	{
+		rc = WaitForSingleObject(thread, 0);
+		if (WAIT_OBJECT_0 != rc)
+		{
+			printf("Timed WaitForSingleObject on dead thread failed with %" PRIu32 "\n", rc);
+			return -6;
+		}
 	}
 
 	if (!CloseHandle(thread))

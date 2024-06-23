@@ -33,9 +33,9 @@ static BOOL bStopTest = FALSE;
 
 static DWORD WINAPI test_error_thread(LPVOID arg)
 {
-	int id;
-	DWORD dwErrorSet;
-	DWORD dwErrorGet;
+	int id = 0;
+	DWORD dwErrorSet = 0;
+	DWORD dwErrorGet = 0;
 
 	id = (int)(size_t)arg;
 
@@ -60,9 +60,8 @@ static DWORD WINAPI test_error_thread(LPVOID arg)
 
 int TestErrorSetLastError(int argc, char* argv[])
 {
-	DWORD error;
+	DWORD error = 0;
 	HANDLE threads[4];
-	int i;
 
 	WINPR_UNUSED(argc);
 	WINPR_UNUSED(argv);
@@ -83,7 +82,7 @@ int TestErrorSetLastError(int argc, char* argv[])
 		return -1;
 	}
 
-	pLoopCount = _aligned_malloc(sizeof(LONG), sizeof(LONG));
+	pLoopCount = winpr_aligned_malloc(sizeof(LONG), sizeof(LONG));
 	if (!pLoopCount)
 	{
 		printf("Unable to allocate memory\n");
@@ -91,7 +90,7 @@ int TestErrorSetLastError(int argc, char* argv[])
 	}
 	*pLoopCount = 0;
 
-	for (i = 0; i < 4; i++)
+	for (int i = 0; i < 4; i++)
 	{
 		if (!(threads[i] = CreateThread(NULL, 0, test_error_thread, (void*)(size_t)0, 0, NULL)))
 		{
@@ -130,6 +129,7 @@ int TestErrorSetLastError(int argc, char* argv[])
 	}
 
 	printf("Completed %" PRId32 " iterations.\n", *pLoopCount);
+	winpr_aligned_free(pLoopCount);
 
 	return status;
 }

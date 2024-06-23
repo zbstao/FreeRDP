@@ -52,8 +52,7 @@ static const char* strsignal(int signum)
 static void cleanup_handler(int signum)
 {
 	printf("\n");
-	WLog_INFO(TAG, "[%s]: caught signal %s [%d], starting cleanup...", __FUNCTION__,
-	          strsignal(signum), signum);
+	WLog_INFO(TAG, "caught signal %s [%d], starting cleanup...", strsignal(signum), signum);
 
 	WLog_INFO(TAG, "stopping all connections.");
 	pf_server_stop(server);
@@ -74,8 +73,24 @@ static WINPR_NORETURN(void usage(const char* app))
 	printf("Usage:\n");
 	printf("%s -h                               Display this help text.\n", app);
 	printf("%s --help                           Display this help text.\n", app);
+	printf("%s --buildconfig                    Print the build configuration.\n", app);
 	printf("%s <config ini file>                Start the proxy with <config.ini>\n", app);
 	printf("%s --dump-config <config ini file>  Create a template <config.ini>\n", app);
+	printf("%s -v                               Print out binary version.\n", app);
+	printf("%s --version                        Print out binary version.\n", app);
+	exit(0);
+}
+
+static WINPR_NORETURN(void version(const char* app))
+{
+	printf("%s version %s", app, freerdp_get_version_string());
+	exit(0);
+}
+
+static WINPR_NORETURN(void buildconfig(const char* app))
+{
+	printf("This is FreeRDP version %s (%s)\n", FREERDP_VERSION_FULL, FREERDP_GIT_REVISION);
+	printf("%s", freerdp_get_build_config());
 	exit(0);
 }
 
@@ -102,6 +117,8 @@ int main(int argc, char* argv[])
 			usage(argv[0]);
 		else if (_stricmp(arg, "--help") == 0)
 			usage(argv[0]);
+		else if (_stricmp(arg, "--buildconfig") == 0)
+			buildconfig(argv[0]);
 		else if (_stricmp(arg, "--dump-config") == 0)
 		{
 			if (argc <= 2)
@@ -109,7 +126,11 @@ int main(int argc, char* argv[])
 			pf_server_config_dump(argv[2]);
 			status = 0;
 			goto fail;
-		    }
+		}
+		else if (_stricmp(arg, "-v") == 0)
+			version(argv[0]);
+		else if (_stricmp(arg, "--version") == 0)
+			version(argv[0]);
 		config_path = argv[1];
 	}
 

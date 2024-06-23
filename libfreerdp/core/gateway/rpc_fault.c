@@ -27,7 +27,7 @@
 
 #define TAG FREERDP_TAG("core.gateway.rpc")
 
-static const RPC_FAULT_CODE RPC_FAULT_CODES[] = {
+static ALIGN64 const RPC_FAULT_CODE RPC_FAULT_CODES[] = {
 	DEFINE_RPC_FAULT_CODE(nca_s_fault_object_not_found, CAT_GATEWAY),
 	DEFINE_RPC_FAULT_CODE(nca_s_fault_cancel, CAT_GATEWAY),
 	DEFINE_RPC_FAULT_CODE(nca_s_fault_addr_error, CAT_GATEWAY),
@@ -354,10 +354,9 @@ static UINT32 rpc_map_status_code_to_win32_error_code(UINT32 code)
 
 const char* rpc_error_to_string(UINT32 code)
 {
-	size_t index;
 	static char buffer[1024];
 
-	for (index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_FAULT_CODES[index];
 		if (current->code == code)
@@ -367,7 +366,7 @@ const char* rpc_error_to_string(UINT32 code)
 		}
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
 		if (current->code == code)
@@ -377,7 +376,7 @@ const char* rpc_error_to_string(UINT32 code)
 		}
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
 		if (current->code == HRESULT_CODE(code))
@@ -394,23 +393,21 @@ out:
 
 const char* rpc_error_to_category(UINT32 code)
 {
-	size_t index;
-
-	for (index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_FAULT_CODES[index];
 		if (current->code == code)
 			return current->category;
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
 		if (current->code == code)
 			return current->category;
 	}
 
-	for (index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
+	for (size_t index = 0; index < ARRAYSIZE(RPC_TSG_FAULT_CODES); index++)
 	{
 		const RPC_FAULT_CODE* const current = &RPC_TSG_FAULT_CODES[index];
 		if (current->code == HRESULT_CODE(code))

@@ -47,6 +47,7 @@ extern "C"
 #define PROCESSOR_ARCHITECTURE_NEUTRAL 11
 #define PROCESSOR_ARCHITECTURE_ARM64 12
 #define PROCESSOR_ARCHITECTURE_MIPS64 13
+#define PROCESSOR_ARCHITECTURE_E2K 14
 #define PROCESSOR_ARCHITECTURE_UNKNOWN 0xFFFF
 
 #define PROCESSOR_INTEL_386 386
@@ -100,6 +101,7 @@ extern "C"
 	WINPR_API void GetSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 	WINPR_API void GetNativeSystemInfo(LPSYSTEM_INFO lpSystemInfo);
 
+#if defined(WITH_WINPR_DEPRECATED)
 	typedef struct
 	{
 		DWORD dwOSVersionInfoSize;
@@ -181,6 +183,7 @@ extern "C"
 #define VER_SUITE_STORAGE_SERVER 0x00002000
 #define VER_SUITE_TERMINAL 0x00000010
 #define VER_SUITE_WH_SERVER 0x00008000
+#endif
 
 #define VER_NT_DOMAIN_CONTROLLER 0x0000002
 #define VER_NT_SERVER 0x0000003
@@ -224,6 +227,19 @@ extern "C"
 #define PF_ARM_64BIT_LOADSTORE_ATOMIC 25
 #define PF_ARM_EXTERNAL_CACHE_AVAILABLE 26
 #define PF_ARM_FMAC_INSTRUCTIONS_AVAILABLE 27
+#define PF_SSSE3_INSTRUCTIONS_AVAILABLE 36
+#define PF_SSE4_1_INSTRUCTIONS_AVAILABLE 37
+#define PF_SSE4_2_INSTRUCTIONS_AVAILABLE 38
+#define PF_AVX_INSTRUCTIONS_AVAILABLE 39
+#define PF_AVX2_INSTRUCTIONS_AVAILABLE 40
+#define PF_AVX512F_INSTRUCTIONS_AVAILABLE 41
+#define PF_ARM_V8_INSTRUCTIONS_AVAILABLE 29
+#define PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE 30
+#define PF_ARM_V8_CRC32_INSTRUCTIONS_AVAILABLE 31
+#define PF_ARM_V81_ATOMIC_INSTRUCTIONS_AVAILABLE 34
+#define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
+#define PF_ARM_V83_JSCVT_INSTRUCTIONS_AVAILABLE 44
+#define PF_ARM_V83_LRCPC_INSTRUCTIONS_AVAILABLE 45
 
 #define PF_ARM_V4 0x80000001
 #define PF_ARM_V5 0x80000002
@@ -262,6 +278,7 @@ extern "C"
 
 #if !defined(_WIN32) || defined(_UWP)
 
+#if defined(WITH_WINPR_DEPRECATED)
 	WINPR_API BOOL GetVersionExA(LPOSVERSIONINFOA lpVersionInformation);
 	WINPR_API BOOL GetVersionExW(LPOSVERSIONINFOW lpVersionInformation);
 
@@ -271,6 +288,7 @@ extern "C"
 #define GetVersionEx GetVersionExA
 #endif
 
+#endif
 #endif
 
 #if !defined(_WIN32) || defined(_UWP)
@@ -317,6 +335,17 @@ extern "C"
 
 #endif
 
+#define WINPR_TIME_NS_TO_S(ns) ((ns) / 1000000000ull)
+#define WINPR_TIME_NS_TO_MS(ns) ((ns) / 1000000ull)
+#define WINPR_TIME_NS_TO_US(ns) ((ns) / 1000ull)
+
+#define WINPR_TIME_NS_REM_NS(ns) ((ns) % 1000000000ull)
+#define WINPR_TIME_NS_REM_US(ns) (WINPR_TIME_NS_REM_NS(ns) / 1000ull)
+#define WINPR_TIME_NS_REM_MS(ns) (WINPR_TIME_NS_REM_US(ns) / 1000ull)
+
+	WINPR_API UINT64 winpr_GetTickCount64NS(void);
+	WINPR_API UINT64 winpr_GetUnixTimeNS(void);
+
 	WINPR_API DWORD GetTickCountPrecise(void);
 
 	WINPR_API BOOL IsProcessorFeaturePresentEx(DWORD ProcessorFeature);
@@ -337,6 +366,7 @@ extern "C"
 #define PF_EX_ARM_IDIVA 13
 #define PF_EX_ARM_IDIVT 14
 #define PF_EX_AVX_PCLMULQDQ 15
+#define PF_EX_AVX512F 16
 
 /*
  * some "aliases" for the standard defines

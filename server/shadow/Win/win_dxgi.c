@@ -296,7 +296,7 @@ int win_shadow_dxgi_init_duplication(winShadowSubsystem* subsystem)
 	HRESULT hr;
 	UINT dTop, i = 0;
 	IDXGIOutput* pOutput;
-	DXGI_OUTPUT_DESC outputDesc;
+	DXGI_OUTPUT_DESC outputDesc = { 0 };
 	DXGI_OUTPUT_DESC* pOutputDesc;
 	D3D11_TEXTURE2D_DESC textureDesc;
 	IDXGIDevice* dxgiDevice = NULL;
@@ -330,7 +330,6 @@ int win_shadow_dxgi_init_duplication(winShadowSubsystem* subsystem)
 	}
 
 	pOutput = NULL;
-	ZeroMemory(&outputDesc, sizeof(outputDesc));
 
 	while (dxgiAdapter->lpVtbl->EnumOutputs(dxgiAdapter, i, &pOutput) != DXGI_ERROR_NOT_FOUND)
 	{
@@ -683,7 +682,6 @@ int win_shadow_dxgi_get_next_frame(winShadowSubsystem* subsystem)
 
 int win_shadow_dxgi_get_invalid_region(winShadowSubsystem* subsystem)
 {
-	UINT i;
 	HRESULT hr;
 	POINT* pSrcPt;
 	RECT* pDstRect;
@@ -762,7 +760,7 @@ int win_shadow_dxgi_get_invalid_region(winShadowSubsystem* subsystem)
 
 	numMoveRects = MoveRectsBufferSize / sizeof(DXGI_OUTDUPL_MOVE_RECT);
 
-	for (i = 0; i < numMoveRects; i++)
+	for (UINT i = 0; i < numMoveRects; i++)
 	{
 		pMoveRect = &pMoveRectBuffer[i];
 		pSrcPt = &(pMoveRect->SourcePoint);
@@ -778,7 +776,7 @@ int win_shadow_dxgi_get_invalid_region(winShadowSubsystem* subsystem)
 
 	numDirtyRects = DirtyRectsBufferSize / sizeof(RECT);
 
-	for (i = 0; i < numDirtyRects; i++)
+	for (UINT i = 0; i < numDirtyRects; i++)
 	{
 		pDirtyRect = &pDirtyRectsBuffer[i];
 

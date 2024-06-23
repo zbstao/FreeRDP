@@ -23,16 +23,12 @@
 
 #include <winpr/collections.h>
 
-/* WARNING: Do not access structs directly, the API will be reworked
- * to make this opaque. */
 typedef struct
 {
 	SSIZE_T size;
 	void* buffer;
 } wBufferPoolItem;
 
-/* WARNING: Do not access structs directly, the API will be reworked
- * to make this opaque. */
 struct s_wBufferPool
 {
 	SSIZE_T fixedSize;
@@ -88,11 +84,11 @@ static BOOL BufferPool_ShiftAvailable(wBufferPool* pool, size_t index, int count
 	{
 		if (pool->aSize + count > pool->aCapacity)
 		{
-			wBufferPoolItem* newArray;
+			wBufferPoolItem* newArray = NULL;
 			SSIZE_T newCapacity = pool->aCapacity * 2;
 
 			if (pool->alignment > 0)
-				newArray = (wBufferPoolItem*)_aligned_realloc(
+				newArray = (wBufferPoolItem*)winpr_aligned_realloc(
 				    pool->aArray, sizeof(wBufferPoolItem) * newCapacity, pool->alignment);
 			else
 				newArray =
@@ -123,9 +119,9 @@ static BOOL BufferPool_ShiftUsed(wBufferPool* pool, SSIZE_T index, SSIZE_T count
 		if (pool->uSize + count > pool->uCapacity)
 		{
 			SSIZE_T newUCapacity = pool->uCapacity * 2;
-			wBufferPoolItem* newUArray;
+			wBufferPoolItem* newUArray = NULL;
 			if (pool->alignment > 0)
-				newUArray = (wBufferPoolItem*)_aligned_realloc(
+				newUArray = (wBufferPoolItem*)winpr_aligned_realloc(
 				    pool->uArray, sizeof(wBufferPoolItem) * newUCapacity, pool->alignment);
 			else
 				newUArray =
@@ -155,7 +151,7 @@ static BOOL BufferPool_ShiftUsed(wBufferPool* pool, SSIZE_T index, SSIZE_T count
 
 SSIZE_T BufferPool_GetPoolSize(wBufferPool* pool)
 {
-	SSIZE_T size;
+	SSIZE_T size = 0;
 
 	BufferPool_Lock(pool);
 
@@ -182,7 +178,6 @@ SSIZE_T BufferPool_GetPoolSize(wBufferPool* pool)
 SSIZE_T BufferPool_GetBufferSize(wBufferPool* pool, const void* buffer)
 {
 	SSIZE_T size = 0;
-	SSIZE_T index = 0;
 	BOOL found = FALSE;
 
 	BufferPool_Lock(pool);
@@ -197,7 +192,7 @@ SSIZE_T BufferPool_GetBufferSize(wBufferPool* pool, const void* buffer)
 	{
 		/* variable size buffers */
 
-		for (index = 0; index < pool->uSize; index++)
+		for (SSIZE_T index = 0; index < pool->uSize; index++)
 		{
 			if (pool->uArray[index].buffer == buffer)
 			{
@@ -219,9 +214,8 @@ SSIZE_T BufferPool_GetBufferSize(wBufferPool* pool, const void* buffer)
 
 void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 {
-	SSIZE_T index;
-	SSIZE_T maxSize;
-	SSIZE_T maxIndex;
+	SSIZE_T maxSize = 0;
+	SSIZE_T maxIndex = 0;
 	SSIZE_T foundIndex = -1;
 	BOOL found = FALSE;
 	void* buffer = NULL;
@@ -238,7 +232,7 @@ void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 		if (!buffer)
 		{
 			if (pool->alignment)
-				buffer = _aligned_malloc(pool->fixedSize, pool->alignment);
+				buffer = winpr_aligned_malloc(pool->fixedSize, pool->alignment);
 			else
 				buffer = malloc(pool->fixedSize);
 		}
@@ -256,7 +250,7 @@ void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 		if (size < 1)
 			size = pool->fixedSize;
 
-		for (index = 0; index < pool->aSize; index++)
+		for (SSIZE_T index = 0; index < pool->aSize; index++)
 		{
 			if (pool->aArray[index].size > maxSize)
 			{
@@ -285,7 +279,7 @@ void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 			else
 			{
 				if (pool->alignment)
-					buffer = _aligned_malloc(size, pool->alignment);
+					buffer = winpr_aligned_malloc(size, pool->alignment);
 				else
 					buffer = malloc(size);
 
@@ -299,9 +293,9 @@ void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 
 			if (maxSize < size)
 			{
-				void* newBuffer;
+				void* newBuffer = NULL;
 				if (pool->alignment)
-					newBuffer = _aligned_realloc(buffer, size, pool->alignment);
+					newBuffer = winpr_aligned_realloc(buffer, size, pool->alignment);
 				else
 					newBuffer = realloc(buffer, size);
 
@@ -341,7 +335,7 @@ void* BufferPool_Take(wBufferPool* pool, SSIZE_T size)
 
 out_error:
 	if (pool->alignment)
-		_aligned_free(buffer);
+		winpr_aligned_free(buffer);
 	else
 		free(buffer);
 out_error_no_free:
@@ -357,7 +351,6 @@ BOOL BufferPool_Return(wBufferPool* pool, void* buffer)
 {
 	BOOL rc = FALSE;
 	SSIZE_T size = 0;
-	SSIZE_T index = 0;
 	BOOL found = FALSE;
 
 	BufferPool_Lock(pool);
@@ -383,7 +376,8 @@ BOOL BufferPool_Return(wBufferPool* pool, void* buffer)
 	{
 		/* variable size buffers */
 
-		for (index = 0; index < pool->uSize; index++)
+		SSIZE_T index = 0;
+		for (; index < pool->uSize; index++)
 		{
 			if (pool->uArray[index].buffer == buffer)
 			{
@@ -442,7 +436,7 @@ void BufferPool_Clear(wBufferPool* pool)
 			(pool->size)--;
 
 			if (pool->alignment)
-				_aligned_free(pool->array[pool->size]);
+				winpr_aligned_free(pool->array[pool->size]);
 			else
 				free(pool->array[pool->size]);
 		}
@@ -456,7 +450,7 @@ void BufferPool_Clear(wBufferPool* pool)
 			(pool->aSize)--;
 
 			if (pool->alignment)
-				_aligned_free(pool->aArray[pool->aSize].buffer);
+				winpr_aligned_free(pool->aArray[pool->aSize].buffer);
 			else
 				free(pool->aArray[pool->aSize].buffer);
 		}
@@ -466,7 +460,7 @@ void BufferPool_Clear(wBufferPool* pool)
 			(pool->uSize)--;
 
 			if (pool->alignment)
-				_aligned_free(pool->uArray[pool->uSize].buffer);
+				winpr_aligned_free(pool->uArray[pool->uSize].buffer);
 			else
 				free(pool->uArray[pool->uSize].buffer);
 		}
@@ -483,7 +477,7 @@ wBufferPool* BufferPool_New(BOOL synchronized, SSIZE_T fixedSize, DWORD alignmen
 {
 	wBufferPool* pool = NULL;
 
-	pool = (wBufferPool*)malloc(sizeof(wBufferPool));
+	pool = (wBufferPool*)calloc(1, sizeof(wBufferPool));
 
 	if (pool)
 	{
@@ -522,17 +516,17 @@ wBufferPool* BufferPool_New(BOOL synchronized, SSIZE_T fixedSize, DWORD alignmen
 			pool->uCapacity = 32;
 			pool->uArray = (wBufferPoolItem*)calloc(pool->uCapacity, sizeof(wBufferPoolItem));
 			if (!pool->uArray)
-			{
-				free(pool->aArray);
 				goto out_error;
-			}
 		}
 	}
 
 	return pool;
 
 out_error:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
 	BufferPool_Free(pool);
+	WINPR_PRAGMA_DIAG_POP
 	return NULL;
 }
 

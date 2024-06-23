@@ -26,10 +26,11 @@
 #include <winpr/stream.h>
 
 #include <freerdp/log.h>
-#include <freerdp/cache/offscreen.h>
-#include <freerdp/cache/cache.h>
 
 #include "../core/graphics.h"
+
+#include "offscreen.h"
+#include "cache.h"
 
 #define TAG FREERDP_TAG("cache.offscreen")
 
@@ -51,10 +52,9 @@ static BOOL
 update_gdi_create_offscreen_bitmap(rdpContext* context,
                                    const CREATE_OFFSCREEN_BITMAP_ORDER* createOffscreenBitmap)
 {
-	UINT32 i;
-	UINT16 index;
-	rdpBitmap* bitmap;
-	rdpCache* cache;
+	UINT16 index = 0;
+	rdpBitmap* bitmap = NULL;
+	rdpCache* cache = NULL;
 
 	if (!context || !createOffscreenBitmap || !context->cache)
 		return FALSE;
@@ -79,7 +79,7 @@ update_gdi_create_offscreen_bitmap(rdpContext* context,
 	if (cache->offscreen->currentSurface == createOffscreenBitmap->id)
 		bitmap->SetSurface(context, bitmap, FALSE);
 
-	for (i = 0; i < createOffscreenBitmap->deleteList.cIndices; i++)
+	for (UINT32 i = 0; i < createOffscreenBitmap->deleteList.cIndices; i++)
 	{
 		index = createOffscreenBitmap->deleteList.indices[i];
 		offscreen_cache_delete(cache->offscreen, index);
@@ -91,8 +91,8 @@ update_gdi_create_offscreen_bitmap(rdpContext* context,
 static BOOL update_gdi_switch_surface(rdpContext* context,
                                       const SWITCH_SURFACE_ORDER* switchSurface)
 {
-	rdpCache* cache;
-	rdpBitmap* bitmap;
+	rdpCache* cache = NULL;
+	rdpBitmap* bitmap = NULL;
 
 	if (!context || !context->cache || !switchSurface || !context->graphics)
 		return FALSE;
@@ -108,7 +108,7 @@ static BOOL update_gdi_switch_surface(rdpContext* context,
 	}
 	else
 	{
-		rdpBitmap* bmp;
+		rdpBitmap* bmp = NULL;
 		bmp = offscreen_cache_get(cache->offscreen, switchSurface->bitmapId);
 		if (bmp == NULL)
 			return FALSE;
@@ -122,7 +122,7 @@ static BOOL update_gdi_switch_surface(rdpContext* context,
 
 rdpBitmap* offscreen_cache_get(rdpOffscreenCache* offscreenCache, UINT32 index)
 {
-	rdpBitmap* bitmap;
+	rdpBitmap* bitmap = NULL;
 
 	WINPR_ASSERT(offscreenCache);
 
@@ -159,7 +159,7 @@ void offscreen_cache_put(rdpOffscreenCache* offscreenCache, UINT32 index, rdpBit
 
 void offscreen_cache_delete(rdpOffscreenCache* offscreenCache, UINT32 index)
 {
-	rdpBitmap* prevBitmap;
+	rdpBitmap* prevBitmap = NULL;
 
 	WINPR_ASSERT(offscreenCache);
 
@@ -188,8 +188,8 @@ void offscreen_cache_register_callbacks(rdpUpdate* update)
 
 rdpOffscreenCache* offscreen_cache_new(rdpContext* context)
 {
-	rdpOffscreenCache* offscreenCache;
-	rdpSettings* settings;
+	rdpOffscreenCache* offscreenCache = NULL;
+	rdpSettings* settings = NULL;
 
 	WINPR_ASSERT(context);
 
@@ -205,30 +205,36 @@ rdpOffscreenCache* offscreen_cache_new(rdpContext* context)
 	offscreenCache->currentSurface = SCREEN_BITMAP_SURFACE;
 	offscreenCache->maxSize = 7680;
 	offscreenCache->maxEntries = 2000;
-	settings->OffscreenCacheSize = offscreenCache->maxSize;
-	settings->OffscreenCacheEntries = offscreenCache->maxEntries;
+	if (!freerdp_settings_set_uint32(settings, FreeRDP_OffscreenCacheSize, offscreenCache->maxSize))
+		goto fail;
+	if (!freerdp_settings_set_uint32(settings, FreeRDP_OffscreenCacheEntries,
+	                                 offscreenCache->maxEntries))
+		goto fail;
 	offscreenCache->entries = (rdpBitmap**)calloc(offscreenCache->maxEntries, sizeof(rdpBitmap*));
 
 	if (!offscreenCache->entries)
-	{
-		free(offscreenCache);
-		return NULL;
-	}
+		goto fail;
 
 	return offscreenCache;
+fail:
+	WINPR_PRAGMA_DIAG_PUSH
+	WINPR_PRAGMA_DIAG_IGNORED_MISMATCHED_DEALLOC
+	offscreen_cache_free(offscreenCache);
+	WINPR_PRAGMA_DIAG_POP
+	return NULL;
 }
 
 void offscreen_cache_free(rdpOffscreenCache* offscreenCache)
 {
-	size_t i;
-	rdpBitmap* bitmap;
-
 	if (offscreenCache)
 	{
-		for (i = 0; i < offscreenCache->maxEntries; i++)
+		if (offscreenCache->entries)
 		{
-			bitmap = offscreenCache->entries[i];
-			Bitmap_Free(offscreenCache->context, bitmap);
+			for (size_t i = 0; i < offscreenCache->maxEntries; i++)
+			{
+				rdpBitmap* bitmap = offscreenCache->entries[i];
+				Bitmap_Free(offscreenCache->context, bitmap);
+			}
 		}
 
 		free(offscreenCache->entries);

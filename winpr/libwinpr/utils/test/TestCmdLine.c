@@ -76,12 +76,10 @@ static BOOL checkResult(size_t index, char** actual, size_t actualCount)
 	}
 	else
 	{
-		size_t x;
-
 		if (!actual)
 			return FALSE;
 
-		for (x = 0; x < actualCount; x++)
+		for (size_t x = 0; x < actualCount; x++)
 		{
 			const char* a = result[x];
 			const char* b = actual[x];
@@ -96,12 +94,10 @@ static BOOL checkResult(size_t index, char** actual, size_t actualCount)
 
 static BOOL TestCommandLineParseCommaSeparatedValuesEx(void)
 {
-	size_t x;
-
 	WINPR_ASSERT(ARRAYSIZE(testListArgs) == ARRAYSIZE(testListArgsResult));
 	WINPR_ASSERT(ARRAYSIZE(testListArgs) == ARRAYSIZE(testListArgsCount));
 
-	for (x = 0; x < ARRAYSIZE(testListArgs); x++)
+	for (size_t x = 0; x < ARRAYSIZE(testListArgs); x++)
 	{
 		const char* list = testListArgs[x];
 		size_t count = 42;
@@ -117,14 +113,14 @@ static BOOL TestCommandLineParseCommaSeparatedValuesEx(void)
 
 int TestCmdLine(int argc, char* argv[])
 {
-	int status;
+	int status = 0;
 	int ret = -1;
-	DWORD flags;
+	DWORD flags = 0;
 	long width = 0;
 	long height = 0;
-	const COMMAND_LINE_ARGUMENT_A* arg;
-	int testArgc;
-	char** command_line;
+	const COMMAND_LINE_ARGUMENT_A* arg = NULL;
+	int testArgc = 0;
+	char** command_line = NULL;
 	COMMAND_LINE_ARGUMENT_A args[] = {
 		{ "v", COMMAND_LINE_VALUE_REQUIRED, NULL, NULL, NULL, -1, NULL, "destination server" },
 		{ "port", COMMAND_LINE_VALUE_REQUIRED, NULL, NULL, NULL, -1, NULL, "server port" },
@@ -158,6 +154,7 @@ int TestCmdLine(int argc, char* argv[])
 		  "protocol security negotiation" },
 		{ "sec", COMMAND_LINE_VALUE_REQUIRED, NULL, NULL, NULL, -1, NULL,
 		  "force specific protocol security" },
+#if defined(WITH_FREERDP_DEPRECATED)
 		{ "sec-rdp", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
 		  "rdp protocol security" },
 		{ "sec-tls", COMMAND_LINE_VALUE_BOOL, NULL, BoolValueTrue, NULL, -1, NULL,
@@ -170,6 +167,7 @@ int TestCmdLine(int argc, char* argv[])
 		  "certificate name" },
 		{ "cert-ignore", COMMAND_LINE_VALUE_FLAG, NULL, NULL, NULL, -1, NULL,
 		  "ignore certificate" },
+#endif
 		{ "valuelist", COMMAND_LINE_VALUE_REQUIRED, "<val1>,<val2>", NULL, NULL, -1, NULL,
 		  "List of comma separated values." },
 		{ "valuelist-empty", COMMAND_LINE_VALUE_REQUIRED, "<val1>,<val2>", NULL, NULL, -1, NULL,
@@ -303,8 +301,8 @@ int TestCmdLine(int argc, char* argv[])
 		}
 		CommandLineSwitchCase(arg, "valuelist")
 		{
-			char** p;
-			size_t count;
+			char** p = NULL;
+			size_t count = 0;
 			p = CommandLineParseCommaSeparatedValuesEx(arg->Name, arg->Value, &count);
 			free(p);
 
@@ -318,8 +316,8 @@ int TestCmdLine(int argc, char* argv[])
 		}
 		CommandLineSwitchCase(arg, "valuelist-empty")
 		{
-			char** p;
-			size_t count;
+			char** p = NULL;
+			size_t count = 0;
 			p = CommandLineParseCommaSeparatedValuesEx(arg->Name, arg->Value, &count);
 			free(p);
 
